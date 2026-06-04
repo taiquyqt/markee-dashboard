@@ -73,12 +73,12 @@ function StatusPill({ status }: { status: SkillCard['status'] }) {
     status === 'approved' ? 'Đã duyệt' : status === 'rejected' ? 'Đã từ chối' : 'Chờ duyệt';
   const className =
     status === 'approved'
-      ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+      ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
       : status === 'rejected'
-        ? 'bg-rose-950 text-rose-300 border-rose-800'
-        : 'bg-amber-950 text-amber-300 border-amber-800';
+        ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
+        : 'bg-amber-500/10 text-amber-500 border border-amber-500/20';
 
-  return <span className={`rounded-full border px-2 py-1 text-[11px] font-semibold ${className}`}>{label}</span>;
+  return <span className={`flex-shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${className}`}>{label}</span>;
 }
 
 function roleLabel(role: UserProfile['role']) {
@@ -254,8 +254,8 @@ function SkillCardItem({
 
   return (
     <article className="rounded-xl border border-slate-700 bg-slate-900/95 p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-indigo-500 hover:bg-slate-900 hover:shadow-lg hover:shadow-indigo-950/20">
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div className="min-w-0">
+      <div className="mb-4 flex justify-between items-start gap-3">
+        <div className="min-w-0 flex-1">
           <h3 className="line-clamp-2 text-base font-semibold leading-6 text-slate-100">{skill.title}</h3>
           <p className="mt-1 text-xs text-slate-500">
             {skill.category || 'Kỹ năng'} · {skill.authorName}
