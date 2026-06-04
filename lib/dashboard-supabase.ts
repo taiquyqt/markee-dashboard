@@ -199,19 +199,30 @@ export async function getCurrentUserProfile(): Promise<UserProfile | null> {
   };
 }
 
-export async function fetchApprovedSkills(page = 0, pageSize = DEFAULT_PAGE_SIZE, userEmail?: string): Promise<PaginatedSkills> {
+export async function fetchApprovedSkills(
+  page = 0,
+  pageSize = DEFAULT_PAGE_SIZE,
+  userEmail?: string,
+  searchTerm = ''
+): Promise<PaginatedSkills> {
   const from = page * pageSize;
   const to = from + pageSize - 1;
 
-  const { data, error, count } = await supabase
+  let query = supabase
     .from('skill_library')
     .select(
       'id, created_at, title, markdown_content, category, author_id, status, skill_type, likes_count, downloads_count',
       { count: 'exact' }
     )
-    .eq('status', 'approved')
-    .order('created_at', { ascending: false })
-    .range(from, to);
+    .eq('status', 'approved');
+
+  const normalizedSearch = searchTerm.trim();
+
+  if (normalizedSearch) {
+    query = query.or(`title.ilike.%${normalizedSearch}%,category.ilike.%${normalizedSearch}%,author_id.ilike.%${normalizedSearch}%`);
+  }
+
+  const { data, error, count } = await query.order('created_at', { ascending: false }).range(from, to);
 
   if (error) {
     console.error('Error fetching approved skills:', error);

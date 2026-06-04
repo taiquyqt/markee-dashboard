@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Download, Medal, ThumbsUp } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Medal, Search, ThumbsUp } from 'lucide-react';
 import {
   Area,
   AreaChart,
@@ -34,7 +34,7 @@ import {
   type UserProfile,
 } from '@/lib/dashboard-supabase';
 
-const PAGE_SIZE = 12;
+const PAGE_SIZE = 9;
 const TOOL_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#a855f7', '#06b6d4', '#f43f5e'];
 
 function formatNumber(value: number) {
@@ -325,20 +325,79 @@ function TrendingSkills({ skills }: { skills: SkillCard[] }) {
   );
 }
 
-function UserDashboard({ profile, refreshKey = 0 }: { profile: UserProfile; refreshKey?: number }) {
+function PaginationControls({
+  page,
+  total,
+  pageSize,
+  onPageChange,
+}: {
+  page: number;
+  total: number;
+  pageSize: number;
+  onPageChange: (page: number) => void;
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const isFirstPage = page <= 0;
+  const isLastPage = page >= totalPages - 1;
+
+  return (
+    <div className="flex items-center justify-center gap-3 pt-2">
+      <button
+        type="button"
+        onClick={() => onPageChange(page - 1)}
+        disabled={isFirstPage}
+        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-200 transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <ChevronLeft className="h-4 w-4" />
+        Trang trước
+      </button>
+      <div className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-xs font-semibold text-slate-400">
+        Trang {page + 1} trên {totalPages}
+      </div>
+      <button
+        type="button"
+        onClick={() => onPageChange(page + 1)}
+        disabled={isLastPage}
+        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-200 transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        Trang sau
+        <ChevronRight className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
+function UserDashboard({
+  profile,
+  refreshKey = 0,
+  mode = 'full',
+}: {
+  profile: UserProfile;
+  refreshKey?: number;
+  mode?: 'full' | 'library-only';
+}) {
   const [activeView, setActiveView] = useState<'library' | 'workspace'>('library');
   const [library, setLibrary] = useState<PaginatedSkills>({ items: [], total: 0, hasMore: false, nextPage: 0 });
   const [workspaceSkills, setWorkspaceSkills] = useState<SkillCard[]>([]);
   const [trendingSkills, setTrendingSkills] = useState<SkillCard[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(0);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const isLibraryOnly = mode === 'library-only';
 
   async function loadInitialData() {
     setLoading(true);
 
     try {
+      if (isLibraryOnly) {
+        const skills = await fetchApprovedSkills(page, PAGE_SIZE, profile.email, debouncedSearchTerm);
+        setLibrary(skills);
+        return;
+      }
+
       const [skills, trending, workspace] = await Promise.all([
-        fetchApprovedSkills(0, PAGE_SIZE, profile.email),
+        fetchApprovedSkills(page, PAGE_SIZE, profile.email, debouncedSearchTerm),
         fetchTrendingSkills(3, profile.email),
         fetchMyWorkspaceSkills(profile.email),
       ]);
@@ -351,25 +410,20 @@ function UserDashboard({ profile, refreshKey = 0 }: { profile: UserProfile; refr
     }
   }
 
-  async function loadMoreSkills() {
-    setLoadingMore(true);
-
-    try {
-      const next = await fetchApprovedSkills(library.nextPage, PAGE_SIZE, profile.email);
-      setLibrary((current) => ({
-        ...next,
-        items: [...current.items, ...next.items],
-      }));
-    } finally {
-      setLoadingMore(false);
-    }
-  }
-
   useEffect(() => {
     loadInitialData();
-  }, [profile.email, refreshKey]);
+  }, [profile.email, refreshKey, page, debouncedSearchTerm, isLibraryOnly]);
 
-  const displayedSkills = activeView === 'library' ? library.items : workspaceSkills;
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setPage(0);
+      setDebouncedSearchTerm(searchTerm);
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [searchTerm]);
+
+  const displayedSkills = !isLibraryOnly && activeView === 'workspace' ? workspaceSkills : library.items;
 
   return (
     <main className="mx-auto max-w-7xl space-y-5 p-5">
@@ -378,29 +432,43 @@ function UserDashboard({ profile, refreshKey = 0 }: { profile: UserProfile; refr
           <h1 className="text-lg font-bold text-white">Thư viện kỹ năng</h1>
           <p className="text-xs text-slate-400">Xin chào {profile.displayName}. Danh sách chính chỉ hiển thị kỹ năng đã được duyệt.</p>
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setActiveView('library')}
-            className={`rounded-lg px-3 py-2 text-xs font-semibold ${
-              activeView === 'library' ? 'bg-indigo-500 text-white' : 'border border-slate-700 bg-slate-900 text-slate-300'
-            }`}
-          >
-            Thư viện chung
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveView('workspace')}
-            className={`rounded-lg px-3 py-2 text-xs font-semibold ${
-              activeView === 'workspace' ? 'bg-indigo-500 text-white' : 'border border-slate-700 bg-slate-900 text-slate-300'
-            }`}
-          >
-            Không gian của tôi
-          </button>
-        </div>
+        {!isLibraryOnly && (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveView('library')}
+              className={`rounded-lg px-3 py-2 text-xs font-semibold ${
+                activeView === 'library' ? 'bg-indigo-500 text-white' : 'border border-slate-700 bg-slate-900 text-slate-300'
+              }`}
+            >
+              Thư viện chung
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveView('workspace')}
+              className={`rounded-lg px-3 py-2 text-xs font-semibold ${
+                activeView === 'workspace' ? 'bg-indigo-500 text-white' : 'border border-slate-700 bg-slate-900 text-slate-300'
+              }`}
+            >
+              Không gian của tôi
+            </button>
+          </div>
+        )}
       </section>
 
-      <div className={`grid gap-4 ${activeView === 'library' ? 'lg:grid-cols-[1fr_320px]' : ''}`}>
+      {(isLibraryOnly || activeView === 'library') && (
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <input
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Tìm kiếm kỹ năng, danh mục hoặc người tạo..."
+            className="w-full rounded-xl border border-slate-800 bg-slate-900 py-3 pl-11 pr-4 text-sm text-slate-100 outline-none transition-colors placeholder:text-slate-500 focus:border-indigo-500"
+          />
+        </div>
+      )}
+
+      <div className={`grid gap-4 ${!isLibraryOnly && activeView === 'library' ? 'lg:grid-cols-[1fr_320px]' : ''}`}>
         <section className="space-y-4">
           {loading ? (
             <div className="rounded-lg border border-slate-700 bg-slate-900 p-8 text-center text-sm text-slate-400">Đang tải dữ liệu...</div>
@@ -412,8 +480,8 @@ function UserDashboard({ profile, refreshKey = 0 }: { profile: UserProfile; refr
                     key={skill.id}
                     skill={skill}
                     userEmail={profile.email}
-                    showStatus={activeView === 'workspace'}
-                    allowVoting={activeView === 'library'}
+                    showStatus={!isLibraryOnly && activeView === 'workspace'}
+                    allowVoting={isLibraryOnly || activeView === 'library'}
                   />
                 ))}
               </div>
@@ -424,23 +492,14 @@ function UserDashboard({ profile, refreshKey = 0 }: { profile: UserProfile; refr
                 </div>
               )}
 
-              {activeView === 'library' && library.hasMore && (
-                <div className="flex justify-center">
-                  <button
-                    type="button"
-                    onClick={loadMoreSkills}
-                    disabled={loadingMore}
-                    className="rounded-lg bg-slate-800 px-4 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-700 disabled:opacity-60"
-                  >
-                    {loadingMore ? 'Đang tải...' : `Tải thêm (${library.items.length}/${library.total})`}
-                  </button>
-                </div>
+              {(isLibraryOnly || activeView === 'library') && library.total > PAGE_SIZE && (
+                <PaginationControls page={page} total={library.total} pageSize={PAGE_SIZE} onPageChange={setPage} />
               )}
             </>
           )}
         </section>
 
-        {activeView === 'library' && <TrendingSkills skills={trendingSkills} />}
+        {!isLibraryOnly && activeView === 'library' && <TrendingSkills skills={trendingSkills} />}
       </div>
     </main>
   );
@@ -755,6 +814,7 @@ export default function RoleDashboard() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [libraryRefreshKey, setLibraryRefreshKey] = useState(0);
+  const [adminTab, setAdminTab] = useState<'overview' | 'library'>('overview');
 
   async function loadProfile() {
     setLoading(true);
@@ -811,13 +871,41 @@ export default function RoleDashboard() {
       </header>
 
       {profile.role === 'admin' ? (
-        <>
-          <UserDashboard profile={profile} refreshKey={libraryRefreshKey} />
-          <AdminDashboard
-            profile={profile}
-            onSkillModerated={() => setLibraryRefreshKey((key) => key + 1)}
-          />
-        </>
+        <div>
+          <nav className="mx-auto flex max-w-7xl gap-2 px-5 pt-5">
+            <button
+              type="button"
+              onClick={() => setAdminTab('overview')}
+              className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors ${
+                adminTab === 'overview'
+                  ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/30'
+                  : 'border border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              Tổng quan & Duyệt bài
+            </button>
+            <button
+              type="button"
+              onClick={() => setAdminTab('library')}
+              className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors ${
+                adminTab === 'library'
+                  ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-950/30'
+                  : 'border border-slate-800 bg-slate-900 text-slate-300 hover:bg-slate-800'
+              }`}
+            >
+              Thư viện kỹ năng
+            </button>
+          </nav>
+
+          {adminTab === 'overview' ? (
+            <AdminDashboard
+              profile={profile}
+              onSkillModerated={() => setLibraryRefreshKey((key) => key + 1)}
+            />
+          ) : (
+            <UserDashboard profile={profile} refreshKey={libraryRefreshKey} mode="library-only" />
+          )}
+        </div>
       ) : (
         <UserDashboard profile={profile} />
       )}
