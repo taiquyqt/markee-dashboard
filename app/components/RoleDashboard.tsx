@@ -6,6 +6,8 @@ import { ChevronLeft, ChevronRight, Download, Medal, Search, ThumbsUp, BookOpen 
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
   Cell,
   Pie,
   PieChart,
@@ -43,7 +45,24 @@ import {
   fetchProjectMembers,
   fetchProjectSessionsForUser,
   createNewProject,
+  type AILicense,
+  type AIUsageStat,
+  fetchAILicenses,
+  fetchAIUsageStats,
+  createAILicense,
+  renewAILicense,
+  fetchUserAILicenses,
+  fetchUserAIUsageStats,
+  updateProjectSummary,
+  fetchTeamTracks,
+  fetchCurationStats,
+  cancelAILicense,
+  updateAILicense,
+  fetchProjectWIPMembers,
+  fetchProjectWIPsForUser,
+  fetchProjectWIPs,
 } from '@/lib/dashboard-supabase';
+import { supabase } from '@/lib/supabase';
 import UserGuideModal from './UserGuideModal';
 
 const PAGE_SIZE = 9;
@@ -57,11 +76,7 @@ function formatNumber(value: number) {
 }
 
 function formatCurrency(value: number) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 2,
-  }).format(value);
+  return new Intl.NumberFormat('vi-VN').format(value) + ' VNĐ';
 }
 
 function stripMarkdown(value: string, maxLength = 180) {
@@ -400,6 +415,9 @@ function UserDashboard({
 
   const [workspaceTab, setWorkspaceTab] = useState<'approved' | 'pending'>('approved');
 
+  const [selectedTrack, setSelectedTrack] = useState('');
+  const [tracks, setTracks] = useState<string[]>([]);
+
   const approvedWorkspaceSkills = useMemo(() => {
     return workspaceSkills.filter((skill) => skill.status === 'approved');
   }, [workspaceSkills]);
@@ -413,13 +431,13 @@ function UserDashboard({
 
     try {
       if (isLibraryOnly) {
-        const skills = await fetchApprovedSkills(page, PAGE_SIZE, profile.email, debouncedSearchTerm);
+        const skills = await fetchApprovedSkills(page, PAGE_SIZE, profile.email, debouncedSearchTerm, selectedTrack);
         setLibrary(skills);
         return;
       }
 
       const [skills, trending, workspace] = await Promise.all([
-        fetchApprovedSkills(page, PAGE_SIZE, profile.email, debouncedSearchTerm),
+        fetchApprovedSkills(page, PAGE_SIZE, profile.email, debouncedSearchTerm, selectedTrack),
         fetchTrendingSkills(5, profile.email),
         fetchMyWorkspaceSkills(profile.email),
       ]);
@@ -432,9 +450,22 @@ function UserDashboard({
     }
   }
 
+  async function loadTracks() {
+    try {
+      const data = await fetchTeamTracks();
+      setTracks(data);
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  useEffect(() => {
+    loadTracks();
+  }, [refreshKey]);
+
   useEffect(() => {
     loadInitialData();
-  }, [profile.email, refreshKey, page, debouncedSearchTerm, isLibraryOnly]);
+  }, [profile.email, refreshKey, page, debouncedSearchTerm, isLibraryOnly, selectedTrack]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -481,14 +512,31 @@ function UserDashboard({
       </section>
 
       {(isLibraryOnly || activeView === 'library') && (
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-markee-sub" />
-          <input
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Tìm kiếm kỹ năng, danh mục hoặc người tạo..."
-            className="w-full rounded-xl border border-markee-border bg-white py-3 pl-11 pr-4 text-sm text-markee-text outline-none transition-colors placeholder:text-markee-sub focus:border-markee-primary"
-          />
+        <div className="flex flex-col md:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-markee-sub" />
+            <input
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Tìm kiếm kỹ năng, danh mục hoặc người tạo..."
+              className="w-full rounded-xl border border-markee-border bg-white py-3 pl-11 pr-4 text-sm text-markee-text outline-none transition-colors placeholder:text-markee-sub focus:border-markee-primary"
+            />
+          </div>
+          <div className="w-full md:w-64">
+            <select
+              value={selectedTrack}
+              onChange={(e) => {
+                setPage(0);
+                setSelectedTrack(e.target.value);
+              }}
+              className="w-full h-full rounded-xl border border-markee-border bg-white px-4 py-3 text-sm text-markee-text focus:border-markee-primary outline-none transition-colors cursor-pointer"
+            >
+              <option value="">Tất cả Phòng ban</option>
+              {tracks.map(track => (
+                <option key={track} value={track}>{track}</option>
+              ))}
+            </select>
+          </div>
         </div>
       )}
 
@@ -595,7 +643,7 @@ function AdminOverview({
 
       <div className="grid gap-3 md:grid-cols-3">
         <StatCard label="Tổng token" value={formatNumber(metrics.totalTokens)} note="Dữ liệu từ extension" tone="blue" />
-        <StatCard label="Chi phí ước tính" value={formatCurrency(metrics.costUsd)} note="Token × 0.015 USD" tone="green" />
+        <StatCard label="Chi phí ước tính" value={formatCurrency(metrics.costUsd)} note="Token × 0.015 USD (Quy đổi)" tone="green" />
         <StatCard label="Lượt sử dụng" value={formatNumber(metrics.totalSessions)} note="Số phiên AI được ghi nhận" tone="orange" />
       </div>
 
@@ -785,7 +833,7 @@ function AdminDashboard({
       <AdminOverview metrics={metrics} period={period} onPeriodChange={setPeriod} />
 
       <section className="grid gap-4 lg:grid-cols-[360px_1fr]">
-        <div className="rounded-lg border border-markee-border bg-white p-4">
+        <div className="rounded-lg border border-markee-border bg-white p-4 max-h-[calc(100vh-200px)] overflow-y-auto">
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-markee-muted">Kỹ năng chờ duyệt</h2>
           <div className="space-y-2">
             {loading && <div className="text-xs text-markee-sub">Đang tải...</div>}
@@ -870,7 +918,7 @@ export default function RoleDashboard() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [libraryRefreshKey, setLibraryRefreshKey] = useState(0);
-  const [activeTab, setActiveTab] = useState<'overview' | 'library' | 'projects' | 'users'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub'>('overview');
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   async function loadProfile() {
@@ -971,6 +1019,21 @@ export default function RoleDashboard() {
             <span>Thư viện kỹ năng</span>
           </button>
 
+          {profile.role === 'user' && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('assets')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
+                activeTab === 'assets'
+                  ? 'bg-markee-primary text-white shadow-md shadow-red-100'
+                  : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
+              }`}
+            >
+              <span>💳</span>
+              <span>Tài khoản AI của tôi</span>
+            </button>
+          )}
+
           {profile.role === 'admin' && (
             <>
               <button
@@ -996,6 +1059,18 @@ export default function RoleDashboard() {
               >
                 <span>👥</span>
                 <span>Quản lý User</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('knowledge_hub')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
+                  activeTab === 'knowledge_hub'
+                    ? 'bg-markee-primary text-white shadow-md shadow-red-100'
+                    : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
+                }`}
+              >
+                <span>🧠</span>
+                <span>Kho Tri thức</span>
               </button>
             </>
           )}
@@ -1035,12 +1110,20 @@ export default function RoleDashboard() {
             <UserDashboard profile={profile} refreshKey={libraryRefreshKey} />
           )}
 
+          {activeTab === 'assets' && (
+            <MyAssetsView profile={profile} />
+          )}
+
           {activeTab === 'projects' && profile.role === 'admin' && (
             <ProjectManagement profile={profile} />
           )}
 
           {activeTab === 'users' && profile.role === 'admin' && (
             <UserManagement />
+          )}
+
+          {activeTab === 'knowledge_hub' && profile.role === 'admin' && (
+            <KnowledgeHubDashboard />
           )}
         </div>
       </div>
@@ -1095,9 +1178,33 @@ function UserOverviewOnly({ profile }: { profile: UserProfile }) {
 }
 
 function UserManagement() {
+  const [activeTab, setActiveTab] = useState<'users' | 'licenses'>('users');
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'loading' } | null>(null);
+
+  // License management states
+  const [licenses, setLicenses] = useState<AILicense[]>([]);
+  const [usageStats, setUsageStats] = useState<AIUsageStat[]>([]);
+  const [licensesLoading, setLicensesLoading] = useState(false);
+
+  // Modals state
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isRenewModalOpen, setIsRenewModalOpen] = useState(false);
+  const [selectedLicense, setSelectedLicense] = useState<AILicense | null>(null);
+
+  // Create license form state
+  const [newLicenseEmail, setNewLicenseEmail] = useState('');
+  const [newLicenseTool, setNewLicenseTool] = useState('ChatGPT');
+  const [newLicensePlan, setNewLicensePlan] = useState('Pro');
+  const [newLicenseCost, setNewLicenseCost] = useState('500000');
+  const [newLicenseExpiry, setNewLicenseExpiry] = useState('');
+
+  // Edit license form state
+  const [editTool, setEditTool] = useState('ChatGPT');
+  const [editPlan, setEditPlan] = useState('Pro');
+  const [editCost, setEditCost] = useState('500000');
+  const [editExpiry, setEditExpiry] = useState('');
 
   async function loadUsers() {
     setLoading(true);
@@ -1109,6 +1216,46 @@ function UserManagement() {
       showToast('Không thể tải danh sách người dùng', 'error');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadLicenses() {
+    setLicensesLoading(true);
+    try {
+      const [lics, stats] = await Promise.all([fetchAILicenses(), fetchAIUsageStats()]);
+      
+      const licensesWithUsage = await Promise.all(
+        lics.map(async (license) => {
+          const { data: usageData } = await supabase
+            .from('ai_usage_stats')
+            .select('weekly_used')
+            .eq('email', license.email)
+            .ilike('ai_tool', license.ai_tool) // BẮT BUỘC dùng ilike để bỏ qua phân biệt hoa/thường
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+          // Ép kiểu Text "19%" thành Number 19 để truyền vào Progress Bar
+          let usageNumber = 0;
+          if (usageData && usageData.weekly_used) {
+             usageNumber = parseInt(usageData.weekly_used.replace('%', '')) || 0;
+          }
+
+          return {
+            ...license,
+            usagePercent: usageNumber,
+            weekly_used: usageData?.weekly_used || '0%'
+          };
+        })
+      );
+      
+      setLicenses(licensesWithUsage);
+      setUsageStats(stats);
+    } catch (e) {
+      console.error(e);
+      showToast('Không thể tải thông tin bản quyền AI', 'error');
+    } finally {
+      setLicensesLoading(false);
     }
   }
 
@@ -1133,15 +1280,178 @@ function UserManagement() {
     }
   }
 
+  async function handleCreateLicense(e: any) {
+    e.preventDefault();
+    if (!newLicenseEmail.trim() || !newLicenseExpiry) {
+      showToast('Vui lòng nhập đầy đủ thông tin', 'error');
+      return;
+    }
+
+    showToast('Đang tạo bản quyền...', 'loading');
+    try {
+      const newLic = await createAILicense({
+        email: newLicenseEmail.trim(),
+        ai_tool: newLicenseTool,
+        plan_name: newLicensePlan,
+        monthly_cost: Number(newLicenseCost) || 0,
+        expiration_date: newLicenseExpiry,
+      });
+
+      setLicenses(prev => [newLic, ...prev]);
+      showToast('Cấp mới bản quyền thành công!', 'success');
+      setIsCreateModalOpen(false);
+      setNewLicenseEmail('');
+      setNewLicenseTool('ChatGPT');
+      setNewLicensePlan('Pro');
+      setNewLicenseCost('500000');
+      setNewLicenseExpiry('');
+    } catch (err) {
+      console.error(err);
+      showToast('Lỗi khi tạo bản quyền AI', 'error');
+    }
+  }
+
+  async function handleUpdateLicense(e: any) {
+    e.preventDefault();
+    if (!selectedLicense || !editExpiry) {
+      showToast('Vui lòng điền đầy đủ thông tin', 'error');
+      return;
+    }
+
+    showToast('Đang cập nhật bản quyền...', 'loading');
+    try {
+      const updatedLic = await updateAILicense(selectedLicense.id, {
+        ai_tool: editTool,
+        plan_name: editPlan,
+        monthly_cost: Number(editCost) || 0,
+        expiration_date: editExpiry,
+      });
+      setLicenses(prev => prev.map(lic => lic.id === selectedLicense.id ? { ...updatedLic, usagePercent: lic.usagePercent } : lic));
+      
+      // Clear requested status
+      localStorage.removeItem(`license_requested_${selectedLicense.id}`);
+
+      showToast('Cập nhật bản quyền thành công!', 'success');
+      setIsRenewModalOpen(false);
+      setSelectedLicense(null);
+    } catch (err) {
+      console.error(err);
+      showToast('Lỗi khi cập nhật bản quyền', 'error');
+    }
+  }
+
   useEffect(() => {
     loadUsers();
+    loadLicenses();
   }, []);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      loadLicenses();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    const channel = supabase
+      .channel('admin-license-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'ai_usage_stats'
+        },
+        () => {
+          loadLicenses();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'ai_licenses'
+        },
+        () => {
+          loadLicenses();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const activeLicenses = useMemo(() => {
+    return licenses.filter(lic => lic.status !== 'Canceled');
+  }, [licenses]);
+
+  const totalMonthlyCost = useMemo(() => {
+    return activeLicenses.reduce((sum, lic) => {
+      return sum + Number(lic.monthly_cost || 0);
+    }, 0);
+  }, [activeLicenses]);
+
+  const totalActiveCount = activeLicenses.length;
+
+  const costByToolData = useMemo(() => {
+    const costMap: { [tool: string]: number } = {};
+    activeLicenses.forEach(lic => {
+      const tool = lic.ai_tool;
+      const val = Number(lic.monthly_cost || 0);
+      costMap[tool] = (costMap[tool] || 0) + val;
+    });
+    return Object.keys(costMap).map(tool => ({
+      name: tool,
+      cost: costMap[tool],
+    }));
+  }, [activeLicenses]);
+
+  const planDistributionData = useMemo(() => {
+    const planMap: { [plan: string]: number } = {
+      'Free': 0,
+      'Plus': 0,
+      'Pro': 0,
+      'Ultra': 0,
+    };
+    activeLicenses.forEach(lic => {
+      const plan = lic.plan_name.replace(' (Cá nhân)', '');
+      planMap[plan] = (planMap[plan] || 0) + 1;
+    });
+    return Object.keys(planMap)
+      .map(plan => ({
+        name: plan,
+        value: planMap[plan],
+      }))
+      .filter(d => d.value > 0);
+  }, [activeLicenses]);
+
+  const getUsagePercent = (email: string, tool: string, lic?: any) => {
+    if (lic && lic.weekly_used !== undefined) {
+      return lic.weekly_used;
+    }
+    const match = usageStats.find(
+      stat => stat.email.toLowerCase() === email.toLowerCase() &&
+              stat.ai_tool.toLowerCase() === tool.toLowerCase()
+    );
+    return match ? match.weekly_used : '0%';
+  };
+
+  const getLicenseStatus = (lic: AILicense) => {
+    const isCanceled = localStorage.getItem(`license_status_${lic.id}`) === 'Canceled';
+    if (isCanceled) return 'Canceled';
+    const isExpired = new Date(lic.expiration_date) < new Date();
+    return isExpired ? 'Expired' : 'Active';
+  };
+
+  const planColors = ['#94a3b8', '#38bdf8', '#a855f7', '#E3000F'];
 
   return (
     <main className="mx-auto max-w-7xl space-y-5 p-5 relative">
       {/* Toast Notification */}
       {toast && (
-        <div className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border text-sm font-semibold transition-all duration-300 ${
+        <div className={`fixed top-4 right-4 z-[100] flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border text-sm font-semibold transition-all duration-300 ${
           toast.type === 'loading'
             ? 'bg-amber-50 border-amber-200 text-amber-800'
             : toast.type === 'success'
@@ -1155,49 +1465,1249 @@ function UserManagement() {
         </div>
       )}
 
-      <section>
-        <h1 className="text-lg font-bold text-markee-text">Quản lý người dùng</h1>
-        <p className="text-xs text-markee-muted">Phân quyền vai trò và quản trị danh sách người dùng hệ thống.</p>
+      {/* Header with Tab Switcher */}
+      <section className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-bold text-markee-text">Quản lý hệ thống</h1>
+          <p className="text-xs text-markee-muted">Quản lý phân quyền và cấp phát bản quyền AI công ty.</p>
+        </div>
+        
+        <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200">
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === 'users' ? 'bg-white text-markee-text shadow-xs' : 'text-markee-muted hover:text-markee-text'
+            }`}
+          >
+            Danh sách User
+          </button>
+          <button
+            onClick={() => setActiveTab('licenses')}
+            className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer ${
+              activeTab === 'licenses' ? 'bg-white text-markee-text shadow-xs' : 'text-markee-muted hover:text-markee-text'
+            }`}
+          >
+            Quản lý Bản quyền AI
+          </button>
+        </div>
+      </section>
+
+      {/* Tab 1: Users */}
+      {activeTab === 'users' && (
+        <>
+          {loading ? (
+            <div className="text-center py-10 text-sm text-markee-sub">Đang tải danh sách người dùng...</div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-markee-border bg-white shadow-xs">
+              <table className="w-full border-collapse text-left text-sm text-markee-text">
+                <thead className="bg-markee-bg text-xs font-semibold uppercase tracking-wider text-markee-muted border-b border-markee-border">
+                  <tr>
+                    <th className="px-6 py-4">Tên người dùng</th>
+                    <th className="px-6 py-4">Email</th>
+                    <th className="px-6 py-4">Vai trò (Role)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-markee-border">
+                  {users.map((user) => (
+                    <tr key={user.id} className="hover:bg-markee-bg/20 transition-colors">
+                      <td className="px-6 py-4 font-semibold text-markee-text">{user.full_name || 'Chưa cập nhật'}</td>
+                      <td className="px-6 py-4 text-markee-muted">{user.email}</td>
+                      <td className="px-6 py-4">
+                        <select
+                          value={user.role || 'user'}
+                          onChange={(e) => handleRoleChange(user.id, e.target.value as UserRole)}
+                          className="rounded-lg border border-markee-border bg-white px-3 py-1.5 text-xs font-medium text-markee-text focus:border-markee-primary outline-none transition-colors cursor-pointer"
+                        >
+                          <option value="user">User</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                  {users.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="text-center py-8 text-markee-sub">Không tìm thấy người dùng nào.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Tab 2: Licenses */}
+      {activeTab === 'licenses' && (
+        <div className="space-y-6">
+          {/* Top Half: Charts & Metrics */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {/* Metric Cards */}
+            <div className="space-y-5 flex flex-col justify-between">
+              <div className="bg-white p-5 rounded-xl border border-markee-border shadow-xs flex-1 flex flex-col justify-center">
+                <span className="text-xs font-bold text-markee-muted uppercase tracking-wider">Tổng chi phí tháng</span>
+                <span className="text-2xl font-black text-markee-text mt-2">
+                  {formatCurrency(totalMonthlyCost)}
+                </span>
+                <span className="text-[10px] text-markee-muted mt-1">Tính trên các gói tài khoản đang hoạt động</span>
+              </div>
+              
+              <div className="bg-white p-5 rounded-xl border border-markee-border shadow-xs flex-1 flex flex-col justify-center">
+                <span className="text-xs font-bold text-markee-muted uppercase tracking-wider">Tài khoản Active</span>
+                <span className="text-2xl font-black text-markee-text mt-2">{totalActiveCount} tài khoản</span>
+                <span className="text-[10px] text-markee-muted mt-1">Đang hoạt động trên hệ thống</span>
+              </div>
+            </div>
+
+            {/* Bar Chart: Cost by tool */}
+            <div className="bg-white p-5 rounded-xl border border-markee-border shadow-xs col-span-1">
+              <h3 className="text-xs font-bold text-markee-text uppercase tracking-wider mb-4">Chi phí theo công cụ (VNĐ)</h3>
+              <div className="h-44 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={costByToolData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                    <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                    <YAxis tick={{ fontSize: 10 }} />
+                    <Tooltip contentStyle={{ fontSize: '11px', borderRadius: '8px' }} formatter={(value) => [formatCurrency(Number(value)), 'Chi phí']} />
+                    <Bar dataKey="cost" fill="#E3000F" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Donut Chart: Plan distribution */}
+            <div className="bg-white p-5 rounded-xl border border-markee-border shadow-xs col-span-1 flex flex-col items-center">
+              <h3 className="text-xs font-bold text-markee-text uppercase tracking-wider mb-4 w-full text-left">Phân bổ gói cước</h3>
+              <div className="h-44 w-full relative flex items-center justify-center">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={planDistributionData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={45}
+                      outerRadius={65}
+                      paddingAngle={4}
+                      dataKey="value"
+                    >
+                      {planDistributionData.map((entry, index) => {
+                        const planIndex = ['Free', 'Plus', 'Pro', 'Ultra'].indexOf(entry.name);
+                        return <Cell key={`cell-${index}`} fill={planColors[planIndex >= 0 ? planIndex : 0]} />;
+                      })}
+                    </Pie>
+                    <Tooltip contentStyle={{ fontSize: '11px', borderRadius: '8px' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute text-center pointer-events-none">
+                  <div className="text-lg font-bold text-markee-text">{totalActiveCount}</div>
+                  <div className="text-[8px] text-markee-muted uppercase font-semibold">Tài khoản</div>
+                </div>
+              </div>
+              <div className="flex gap-3 text-[10px] mt-2">
+                {planDistributionData.map((d) => {
+                  const planIndex = ['Free', 'Plus', 'Pro', 'Ultra'].indexOf(d.name);
+                  const color = planColors[planIndex >= 0 ? planIndex : 0];
+                  return (
+                    <div key={d.name} className="flex items-center gap-1">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+                      <span className="font-semibold text-markee-text">{d.name} ({d.value})</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Licenses Table */}
+          <div className="bg-white rounded-xl border border-markee-border overflow-hidden">
+            <div className="px-6 py-4 border-b border-markee-border flex items-center justify-between bg-markee-bg/10">
+              <h3 className="text-xs font-bold text-markee-text uppercase tracking-wider">Danh sách Bản quyền được cấp</h3>
+              <button
+                onClick={() => setIsCreateModalOpen(true)}
+                className="px-3.5 py-1.5 bg-markee-primary hover:bg-markee-hover text-white rounded-lg text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5"
+              >
+                <span>➕</span>
+                <span>Cấp mới tài khoản</span>
+              </button>
+            </div>
+
+            {licensesLoading ? (
+              <div className="text-center py-10 text-sm text-markee-sub">Đang tải danh sách bản quyền...</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-left text-sm text-markee-text">
+                  <thead className="bg-markee-bg text-xs font-semibold uppercase tracking-wider text-markee-muted border-b border-markee-border">
+                    <tr>
+                      <th className="px-6 py-4">Email nhân viên</th>
+                      <th className="px-6 py-4">Công cụ AI</th>
+                      <th className="px-6 py-4">Loại gói</th>
+                      <th className="px-6 py-4">Chi phí</th>
+                      <th className="px-6 py-4">% Sử dụng tuần</th>
+                      <th className="px-6 py-4">Ngày hết hạn</th>
+                      <th className="px-6 py-4">Trạng thái</th>
+                      <th className="px-6 py-4 text-right">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-markee-border">
+                    {licenses.map((lic) => {
+                      const status = getLicenseStatus(lic);
+                      let statusBadge = "bg-gray-100 text-gray-700 border-gray-200";
+                      let statusText = "Không hoạt động";
+                      if (status === 'Active') {
+                        statusBadge = "bg-emerald-50 text-emerald-700 border-emerald-200";
+                        statusText = "Đang hoạt động";
+                      } else if (status === 'Expired') {
+                        statusBadge = "bg-red-50 text-red-700 border-red-200";
+                        statusText = "Đã hết hạn";
+                      } else if (status === 'Canceled') {
+                        statusBadge = "bg-slate-100 text-slate-500 border-slate-200";
+                        statusText = "Đã hủy";
+                      }
+
+                      const isPersonal = lic.plan_name.includes('(Cá nhân)');
+                      const displayPlanName = lic.plan_name.replace(' (Cá nhân)', '');
+
+                      return (
+                        <tr key={lic.id} className="hover:bg-markee-bg/20 transition-colors">
+                          <td className="px-6 py-4 font-semibold text-markee-text">{lic.email}</td>
+                          <td className="px-6 py-4 text-markee-muted">
+                            <span className="px-2 py-0.5 rounded-md bg-gray-100 text-gray-700 font-medium text-xs">
+                              {lic.ai_tool}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 font-medium text-markee-text">
+                            <div className="flex items-center gap-1.5">
+                              <span>{displayPlanName}</span>
+                              {isPersonal ? (
+                                <span className="px-1.5 py-0.5 rounded-[4px] text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                  Cá nhân
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.5 rounded-[4px] text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-100">
+                                  Công ty
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 font-semibold text-markee-text">
+                            {formatCurrency(lic.monthly_cost)}
+                          </td>
+                          <td className="px-6 py-4">
+                            {(() => {
+                              const usageNum = lic.usagePercent !== undefined ? lic.usagePercent : 0;
+                              const isHigh = usageNum >= 80;
+                              const barColor = isHigh ? 'bg-red-500' : 'bg-emerald-500';
+                              const textColor = isHigh ? 'text-red-600' : 'text-emerald-600';
+                              return (
+                                <div className="flex items-center gap-2 w-28">
+                                  <div className="flex-1 bg-gray-150 h-1.5 rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full transition-all duration-300 ${barColor}`}
+                                      style={{ width: `${Math.min(usageNum, 100)}%` }}
+                                    />
+                                  </div>
+                                  <span className={`text-[11px] font-bold shrink-0 ${textColor}`}>
+                                    {usageNum}%
+                                  </span>
+                                </div>
+                              );
+                            })()}
+                          </td>
+                          <td className="px-6 py-4 text-markee-muted">
+                            {new Date(lic.expiration_date).toLocaleDateString('vi-VN')}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${statusBadge}`}>
+                              {statusText}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <button
+                              onClick={() => {
+                                setSelectedLicense(lic);
+                                setEditTool(lic.ai_tool);
+                                setEditPlan(lic.plan_name.replace(' (Cá nhân)', ''));
+                                setEditCost(String(lic.monthly_cost));
+                                setEditExpiry(lic.expiration_date);
+                                setIsRenewModalOpen(true);
+                              }}
+                              className="text-markee-primary hover:text-markee-hover font-bold text-xs cursor-pointer transition-colors"
+                            >
+                              Cập nhật Bản quyền
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {licenses.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="text-center py-8 text-markee-sub">Chưa cấp bản quyền AI nào.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Create License Modal */}
+      {isCreateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+          <form onSubmit={handleCreateLicense} className="bg-white border border-markee-border rounded-xl shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div>
+              <h2 className="text-lg font-bold text-markee-text">Cấp mới Bản quyền AI</h2>
+              <p className="text-xs text-markee-muted mt-1">Cấp mới quyền sử dụng công cụ AI cho nhân viên.</p>
+            </div>
+            
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-markee-text mb-1">Email nhân viên</label>
+                <input
+                  type="email"
+                  required
+                  value={newLicenseEmail}
+                  onChange={(e) => setNewLicenseEmail(e.target.value)}
+                  placeholder="nhanvien@markee.com"
+                  className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-markee-text mb-1">Công cụ AI</label>
+                  <select
+                    value={newLicenseTool}
+                    onChange={(e) => setNewLicenseTool(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary outline-none cursor-pointer"
+                  >
+                    <option value="ChatGPT">ChatGPT</option>
+                    <option value="Claude">Claude</option>
+                    <option value="Gemini">Gemini</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-markee-text mb-1">Loại gói</label>
+                  <select
+                    value={newLicensePlan}
+                    onChange={(e) => setNewLicensePlan(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary outline-none cursor-pointer"
+                  >
+                    <option value="Free">Free</option>
+                    <option value="Plus">Plus</option>
+                    <option value="Pro">Pro</option>
+                    <option value="Ultra">Ultra</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-markee-text mb-1">Chi phí tháng (VNĐ)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={newLicenseCost}
+                    onChange={(e) => setNewLicenseCost(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-markee-text mb-1">Ngày hết hạn</label>
+                  <input
+                    type="date"
+                    required
+                    value={newLicenseExpiry}
+                    onChange={(e) => setNewLicenseExpiry(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsCreateModalOpen(false)}
+                className="px-4 py-2 border border-markee-border bg-white text-markee-muted hover:bg-markee-bg hover:text-markee-text rounded-lg transition-colors text-xs font-semibold cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-markee-primary hover:bg-markee-hover text-white rounded-lg transition-colors text-xs font-semibold cursor-pointer"
+              >
+                Tạo mới
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Update License Modal */}
+      {isRenewModalOpen && selectedLicense && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+          <form onSubmit={handleUpdateLicense} className="bg-white border border-markee-border rounded-xl shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div>
+              <h2 className="text-lg font-bold text-markee-text">Cập nhật Bản quyền</h2>
+              <p className="text-xs text-markee-muted mt-1">
+                Cập nhật thông tin bản quyền cho tài khoản <span className="font-semibold text-markee-text">{selectedLicense.email}</span>.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-markee-text mb-1">Công cụ AI</label>
+                  <select
+                    value={editTool}
+                    onChange={(e) => setEditTool(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary outline-none cursor-pointer"
+                  >
+                    <option value="ChatGPT">ChatGPT</option>
+                    <option value="Claude">Claude</option>
+                    <option value="Gemini">Gemini</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-markee-text mb-1">Loại gói</label>
+                  <select
+                    value={editPlan}
+                    onChange={(e) => setEditPlan(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary outline-none cursor-pointer"
+                  >
+                    <option value="Free">Free</option>
+                    <option value="Plus">Plus</option>
+                    <option value="Pro">Pro</option>
+                    <option value="Ultra">Ultra</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-markee-text mb-1">Chi phí tháng (VNĐ)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={editCost}
+                    onChange={(e) => setEditCost(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-markee-text mb-1">Ngày hết hạn</label>
+                  <input
+                    type="date"
+                    required
+                    value={editExpiry}
+                    onChange={(e) => setEditExpiry(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRenewModalOpen(false);
+                  setSelectedLicense(null);
+                }}
+                className="px-4 py-2 border border-markee-border bg-white text-markee-muted hover:bg-markee-bg hover:text-markee-text rounded-lg transition-colors text-xs font-semibold cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-markee-primary hover:bg-markee-hover text-white rounded-lg transition-colors text-xs font-semibold cursor-pointer"
+              >
+                Cập nhật
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </main>
+  );
+}
+
+function MyAssetsView({ profile }: { profile: UserProfile }) {
+  const [licenses, setLicenses] = useState<AILicense[]>([]);
+  const [usageStats, setUsageStats] = useState<AIUsageStat[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  // States for self renewal modal
+  const [selectedLicense, setSelectedLicense] = useState<AILicense | null>(null);
+  const [renewDate, setRenewDate] = useState('');
+  const [isRenewModalOpen, setIsRenewModalOpen] = useState(false);
+
+  // States for declare personal license modal
+  const [isDeclareModalOpen, setIsDeclareModalOpen] = useState(false);
+  const [declareTool, setDeclareTool] = useState('ChatGPT');
+  const [declarePlan, setDeclarePlan] = useState('Pro');
+  const [declareExpiry, setDeclareExpiry] = useState('');
+  const [declareCost, setDeclareCost] = useState('0');
+
+  // Refresh trigger state to force reload
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  function showToast(message: string, type: 'success' | 'error', duration = 3000) {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast(current => current?.message === message ? null : current);
+    }, duration);
+  }
+
+  async function loadData() {
+    setLoading(true);
+    try {
+      const [lics, stats] = await Promise.all([
+        fetchUserAILicenses(profile.email),
+        fetchUserAIUsageStats(profile.email),
+      ]);
+      setLicenses(lics);
+      setUsageStats(stats);
+    } catch (e) {
+      console.error(e);
+      showToast('Không thể tải tài sản AI', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadData();
+  }, [profile.email, refreshKey]);
+
+  useEffect(() => {
+    // Window focus listener to refetch
+    const handleFocus = () => {
+      loadData();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    // Supabase subscription for real-time updates
+    const channel = supabase
+      .channel(`user-usage-${profile.email}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'ai_usage_stats',
+          filter: `email=eq.${profile.email}`
+        },
+        () => {
+          loadData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'ai_licenses',
+          filter: `email=eq.${profile.email}`
+        },
+        () => {
+          loadData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      supabase.removeChannel(channel);
+    };
+  }, [profile.email, refreshKey]);
+
+  const getLatestUsageStat = (tool: string) => {
+    const matchingStats = usageStats.filter(
+      stat => stat.ai_tool.toLowerCase() === tool.toLowerCase()
+    );
+    if (matchingStats.length === 0) return null;
+    return matchingStats[0]; // Already sorted by created_at DESC in database query
+  };
+
+  const handleRequestExtension = (lic: AILicense) => {
+    showToast(`Đã gửi yêu cầu gia hạn gói ${lic.ai_tool} tới Admin!`, 'success');
+    localStorage.setItem(`license_requested_${lic.id}`, 'true');
+    setRefreshKey(prev => prev + 1);
+  };
+
+  const handleSelfRenew = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedLicense || !renewDate) return;
+
+    try {
+      await renewAILicense(selectedLicense.id, renewDate);
+      localStorage.removeItem(`license_status_${selectedLicense.id}`);
+      localStorage.removeItem(`license_canceled_date_${selectedLicense.id}`);
+      localStorage.removeItem(`license_requested_${selectedLicense.id}`);
+
+      showToast(`Đã tự gia hạn thành công gói ${selectedLicense.ai_tool}!`, 'success');
+      setIsRenewModalOpen(false);
+      setSelectedLicense(null);
+      setRenewDate('');
+      setRefreshKey(prev => prev + 1);
+    } catch (err) {
+      console.error(err);
+      showToast('Lỗi khi gia hạn bản quyền AI', 'error');
+    }
+  };
+
+  const handleSkipLicense = async (lic: AILicense) => {
+    try {
+      await cancelAILicense(lic.id);
+      showToast(`Đã hủy kích hoạt gói ${lic.ai_tool}.`, 'success');
+      setRefreshKey(prev => prev + 1);
+    } catch (err) {
+      console.error(err);
+      showToast('Lỗi khi hủy bản quyền AI', 'error');
+    }
+  };
+
+  const handleDeclareLicense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!declareExpiry) {
+      showToast('Vui lòng chọn ngày hết hạn', 'error');
+      return;
+    }
+    try {
+      await createAILicense({
+        email: profile.email,
+        ai_tool: declareTool,
+        plan_name: `${declarePlan} (Cá nhân)`,
+        monthly_cost: Number(declareCost) || 0,
+        expiration_date: declareExpiry,
+        status: 'Active'
+      });
+      showToast('Đã khai báo tài khoản cá nhân thành công!', 'success');
+      setIsDeclareModalOpen(false);
+      setDeclareExpiry('');
+      setDeclareCost('0');
+      setRefreshKey(prev => prev + 1);
+    } catch (err) {
+      console.error(err);
+      showToast('Lỗi khi khai báo tài khoản cá nhân', 'error');
+    }
+  };
+
+  return (
+    <main className="mx-auto max-w-7xl space-y-5 p-5 relative">
+      {/* Toast Notification */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-[100] flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border text-sm font-semibold transition-all duration-300 ${
+          toast.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'
+        }`}>
+          {toast.type === 'success' ? <span className="mr-1">✓</span> : <span className="mr-1">⚠️</span>}
+          {toast.message}
+        </div>
+      )}
+
+      <section className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-bold text-markee-text">Tài sản AI của tôi</h1>
+          <p className="text-xs text-markee-muted">Các gói tài khoản AI được cấp quyền sử dụng hoặc tự khai báo.</p>
+        </div>
+        <button
+          onClick={() => setIsDeclareModalOpen(true)}
+          className="px-3.5 py-1.5 bg-markee-primary hover:bg-markee-hover text-white rounded-lg text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5"
+        >
+          <span>➕</span>
+          <span>Khai báo tài khoản cá nhân</span>
+        </button>
       </section>
 
       {loading ? (
-        <div className="text-center py-10 text-sm text-markee-sub">Đang tải danh sách người dùng...</div>
+        <div className="text-center py-10 text-sm text-markee-sub">Đang tải tài sản AI của bạn...</div>
+      ) : licenses.length === 0 ? (
+        <div className="bg-white rounded-xl border border-markee-border p-8 text-center text-markee-sub text-sm">
+          Bạn chưa được cấp tài khoản AI nào. Vui lòng liên hệ Admin để được cấp bản quyền.
+        </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-markee-border bg-white shadow-xs">
-          <table className="w-full border-collapse text-left text-sm text-markee-text">
-            <thead className="bg-markee-bg text-xs font-semibold uppercase tracking-wider text-markee-muted border-b border-markee-border">
-              <tr>
-                <th className="px-6 py-4">Tên người dùng</th>
-                <th className="px-6 py-4">Email</th>
-                <th className="px-6 py-4">Phòng ban (Team)</th>
-                <th className="px-6 py-4">Vai trò (Role)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-markee-border">
-              {users.map((user) => (
-                <tr key={user.id} className="hover:bg-markee-bg/20 transition-colors">
-                  <td className="px-6 py-4 font-semibold text-markee-text">{user.full_name || 'Chưa cập nhật'}</td>
-                  <td className="px-6 py-4 text-markee-muted">{user.email}</td>
-                  <td className="px-6 py-4 text-markee-muted">{user.team || '—'}</td>
-                  <td className="px-6 py-4">
-                    <select
-                      value={user.role || 'user'}
-                      onChange={(e) => handleRoleChange(user.id, e.target.value as UserRole)}
-                      className="rounded-lg border border-markee-border bg-white px-3 py-1.5 text-xs font-medium text-markee-text focus:border-markee-primary outline-none transition-colors cursor-pointer"
-                    >
-                      <option value="user">User</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </td>
-                </tr>
-              ))}
-              {users.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="text-center py-8 text-markee-sub">Không tìm thấy người dùng nào.</td>
-                </tr>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {licenses.map((lic) => {
+            const isCanceled = lic.status === 'Canceled';
+            const isRequested = localStorage.getItem(`license_requested_${lic.id}`) === 'true';
+
+            // Calculate expiration days
+            const expDate = new Date(lic.expiration_date);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            expDate.setHours(0, 0, 0, 0);
+            const diffTime = expDate.getTime() - today.getTime();
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+            const isExpired = diffDays < 0;
+            const isExpiringSoon = diffDays >= 0 && diffDays <= 3;
+            const showWarning = (isExpired || isExpiringSoon) && !isCanceled;
+
+            const match = getLatestUsageStat(lic.ai_tool);
+            const usageStr = match ? match.weekly_used : '0%';
+            const usageNum = parseInt(usageStr.replace('%', '')) || 0;
+            const resetTime = match ? match.reset_time : '';
+
+            const isPersonal = lic.plan_name.includes('(Cá nhân)');
+            const displayPlanName = lic.plan_name.replace(' (Cá nhân)', '');
+
+            let borderClass = 'border-gray-200';
+            if (showWarning) {
+              borderClass = isExpired ? 'border-red-500 ring-1 ring-red-100' : 'border-amber-400 ring-1 ring-amber-100';
+            }
+
+            return (
+              <div
+                key={lic.id}
+                className={`bg-white rounded-xl border p-5 shadow-xs transition-all flex flex-col justify-between min-h-[250px] ${borderClass}`}
+                style={{ opacity: isCanceled ? 0.5 : 1 }}
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="px-2.5 py-1 rounded-lg bg-gray-100 text-markee-text font-bold text-xs">
+                      {lic.ai_tool}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold text-markee-muted uppercase tracking-wider">
+                        {displayPlanName}
+                      </span>
+                      {isPersonal ? (
+                        <span className="px-1.5 py-0.5 rounded-[4px] text-[8px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                          Cá nhân
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 rounded-[4px] text-[8px] font-bold bg-blue-50 text-blue-700 border border-blue-100">
+                          Công ty
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {showWarning && (
+                    <div className={`mt-3 p-2.5 rounded-lg border text-xs font-semibold ${
+                      isExpired ? 'bg-red-50 text-red-800 border-red-100' : 'bg-amber-50 text-amber-800 border-amber-100'
+                    }`}>
+                      {isExpired ? '⚠️ Tài khoản đã hết hạn!' : `⏳ Sắp hết hạn (còn ${diffDays} ngày)`}
+                    </div>
+                  )}
+
+                  <div className="mt-4 flex items-center justify-between text-xs text-markee-muted">
+                    <span>Hết hạn:</span>
+                    <span className={`font-semibold ${isExpired && !isCanceled ? 'text-red-600 font-bold' : 'text-markee-text'}`}>
+                      {new Date(lic.expiration_date).toLocaleDateString('vi-VN')}
+                    </span>
+                  </div>
+
+                  <div className="mt-5 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-markee-muted">Hạn mức tuần:</span>
+                      <span className="font-bold text-markee-text">{usageStr}</span>
+                    </div>
+                    <div className="w-full bg-gray-100 h-2 rounded-full overflow-hidden">
+                      <div
+                        className="bg-markee-primary h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.min(usageNum, 100)}%` }}
+                      />
+                    </div>
+                    {match ? (
+                      resetTime && (
+                        <p className="text-sm text-gray-500 italic mt-1">
+                          Hạn mức hằng tuần sẽ đặt lại vào: {resetTime}
+                        </p>
+                      )
+                    ) : (
+                      <p className="text-sm text-gray-500 italic mt-1">
+                        Chưa có dữ liệu sử dụng
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-5 pt-4 border-t border-gray-100 flex flex-col gap-2">
+                  {showWarning ? (
+                    <>
+                      {!isPersonal ? (
+                        <button
+                          onClick={() => handleRequestExtension(lic)}
+                          disabled={isRequested}
+                          className="w-full px-3 py-2 bg-markee-primary hover:bg-markee-hover disabled:bg-gray-150 disabled:text-gray-400 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors text-center"
+                        >
+                          {isRequested ? 'Đã gửi yêu cầu gia hạn' : 'Yêu cầu Admin gia hạn'}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setSelectedLicense(lic);
+                            setRenewDate('');
+                            setIsRenewModalOpen(true);
+                          }}
+                          className="w-full px-3 py-2 border border-markee-primary text-markee-primary hover:bg-red-50 rounded-lg text-xs font-bold cursor-pointer transition-all text-center"
+                        >
+                          Tôi đã tự gia hạn
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleSkipLicense(lic)}
+                        className="w-full text-center text-xs text-markee-muted hover:text-markee-text font-semibold underline cursor-pointer mt-1"
+                      >
+                        Không dùng nữa (Bỏ qua)
+                      </button>
+                    </>
+                  ) : (
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-emerald-600 font-bold flex items-center gap-1">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                        {isCanceled ? 'Đã hủy' : 'Hoạt động'}
+                      </span>
+                      {isCanceled ? (
+                        isPersonal ? (
+                          <button
+                            onClick={() => {
+                              setSelectedLicense(lic);
+                              setRenewDate('');
+                              setIsRenewModalOpen(true);
+                            }}
+                            className="px-2 py-1 bg-markee-primary hover:bg-markee-hover text-white rounded-md text-[10px] font-bold cursor-pointer transition-colors"
+                          >
+                            Tái kích hoạt
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleRequestExtension(lic)}
+                            disabled={isRequested}
+                            className="px-2 py-1 bg-markee-primary hover:bg-markee-hover disabled:bg-gray-100 disabled:text-gray-400 text-white rounded-md text-[10px] font-bold cursor-pointer transition-colors"
+                          >
+                            {isRequested ? 'Đã yêu cầu' : 'Yêu cầu Admin gia hạn'}
+                          </button>
+                        )
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Self-Renew Modal */}
+      {isRenewModalOpen && selectedLicense && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+          <form onSubmit={handleSelfRenew} className="bg-white border border-markee-border rounded-xl shadow-2xl max-w-sm w-full p-6 space-y-4">
+            <div>
+              <h2 className="text-lg font-bold text-markee-text">Tôi tự gia hạn gói cước</h2>
+              <p className="text-xs text-markee-muted mt-1">
+                Chọn ngày hết hạn mới để kích hoạt lại thẻ gói <span className="font-semibold text-markee-text">{selectedLicense.ai_tool}</span>.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-markee-text mb-1.5">Ngày hết hạn mới</label>
+              <input
+                type="date"
+                required
+                value={renewDate}
+                onChange={(e) => setRenewDate(e.target.value)}
+                className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRenewModalOpen(false);
+                  setSelectedLicense(null);
+                }}
+                className="px-4 py-2 border border-markee-border bg-white text-markee-muted hover:bg-markee-bg hover:text-markee-text rounded-lg transition-colors text-xs font-semibold cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-markee-primary hover:bg-markee-hover text-white rounded-lg transition-colors text-xs font-semibold cursor-pointer"
+              >
+                Lưu ngày mới
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Declare Personal License Modal */}
+      {isDeclareModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+          <form onSubmit={handleDeclareLicense} className="bg-white border border-markee-border rounded-xl shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div>
+              <h2 className="text-lg font-bold text-markee-text">Khai báo tài khoản cá nhân</h2>
+              <p className="text-xs text-markee-muted mt-1">
+                Khai báo tài khoản cá nhân tự mua để quản lý và theo dõi.
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-markee-text mb-1">Công cụ AI</label>
+                  <select
+                    value={declareTool}
+                    onChange={(e) => setDeclareTool(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary outline-none cursor-pointer"
+                  >
+                    <option value="ChatGPT">ChatGPT</option>
+                    <option value="Claude">Claude</option>
+                    <option value="Gemini">Gemini</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-markee-text mb-1">Loại gói</label>
+                  <select
+                    value={declarePlan}
+                    onChange={(e) => setDeclarePlan(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary outline-none cursor-pointer"
+                  >
+                    <option value="Free">Free</option>
+                    <option value="Plus">Plus</option>
+                    <option value="Pro">Pro</option>
+                    <option value="Ultra">Ultra</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-markee-text mb-1">Chi phí (VNĐ/tháng)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={declareCost}
+                    onChange={(e) => setDeclareCost(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-markee-text mb-1">Ngày hết hạn</label>
+                  <input
+                    type="date"
+                    required
+                    value={declareExpiry}
+                    onChange={(e) => setDeclareExpiry(e.target.value)}
+                    className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsDeclareModalOpen(false)}
+                className="px-4 py-2 border border-markee-border bg-white text-markee-muted hover:bg-markee-bg hover:text-markee-text rounded-lg transition-colors text-xs font-semibold cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-markee-primary hover:bg-markee-hover text-white rounded-lg transition-colors text-xs font-semibold cursor-pointer"
+              >
+                Khai báo
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+    </main>
+  );
+}
+
+interface CurationStats {
+  rawSessions: number;
+  wipDrafts: number;
+  knowledgeHub: number;
+}
+
+interface FlattenedSummary {
+  projectId: number;
+  projectName: string;
+  title: string;
+  insights: string[];
+  contributors: string;
+  totalTokens: number;
+  model: string;
+  timestamp: string;
+}
+
+function KnowledgeHubDashboard() {
+  const [stats, setStats] = useState<CurationStats>({ rawSessions: 0, wipDrafts: 0, knowledgeHub: 0 });
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedProjectFilter, setSelectedProjectFilter] = useState('Tất cả');
+  const [selectedSummary, setSelectedSummary] = useState<FlattenedSummary | null>(null);
+
+  async function loadData() {
+    setLoading(true);
+    try {
+      const [curationStats, allProjects] = await Promise.all([
+        fetchCurationStats(),
+        fetchProjects()
+      ]);
+      setStats(curationStats);
+      setProjects(allProjects);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const flattenedSummaries = useMemo(() => {
+    const list: FlattenedSummary[] = [];
+    projects.forEach(p => {
+      if (p.master_summary) {
+        try {
+          const parsed = JSON.parse(p.master_summary);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((item: any) => {
+              list.push({
+                projectId: p.id,
+                projectName: p.name,
+                title: item.title,
+                insights: item.insights || [],
+                contributors: item.contributors || 'Hệ thống',
+                totalTokens: item.totalTokens || 0,
+                model: item.model || 'Gemini 3.5 Flash',
+                timestamp: item.timestamp || p.created_at
+              });
+            });
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    });
+    return list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  }, [projects]);
+
+  const filteredSummaries = useMemo(() => {
+    return flattenedSummaries.filter(s => {
+      const matchSearch = s.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        s.insights.some(i => i.toLowerCase().includes(searchTerm.toLowerCase()));
+      const matchProject = selectedProjectFilter === 'Tất cả' || s.projectName === selectedProjectFilter;
+      return matchSearch && matchProject;
+    });
+  }, [flattenedSummaries, searchTerm, selectedProjectFilter]);
+
+  return (
+    <main className="mx-auto max-w-7xl space-y-5 p-5">
+      <section>
+        <h1 className="text-lg font-bold text-markee-text">Kho Tri thức</h1>
+        <p className="text-xs text-markee-muted">Trung tâm lưu trữ và tổng hợp tri thức tự động từ các dự án AI.</p>
+      </section>
+
+      {/* Curation Pipeline Stats */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full mb-8">
+        {/* Thẻ 1: Nhật ký AI thô */}
+        <div className="bg-white border border-slate-200 border-l-4 border-l-red-600 rounded-lg shadow-sm p-6 flex flex-col justify-center text-left">
+          <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">Nhật ký AI thô</div>
+          <div className="text-3xl font-bold text-markee-text mt-2">{stats.rawSessions}</div>
+          <div className="text-sm text-gray-400 mt-1">Dữ liệu từ extension</div>
+        </div>
+
+        {/* Thẻ 2: Bản nháp WIP */}
+        <div className="bg-white border border-slate-200 border-l-4 border-l-blue-600 rounded-lg shadow-sm p-6 flex flex-col justify-center text-left">
+          <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">Bản nháp WIP</div>
+          <div className="text-3xl font-bold text-markee-text mt-2">{stats.wipDrafts}</div>
+          <div className="text-sm text-gray-400 mt-1">Đang chờ tổng hợp</div>
+        </div>
+
+        {/* Thẻ 3: Trung tâm tri thức */}
+        <div className="bg-white border border-slate-200 border-l-4 border-l-emerald-600 rounded-lg shadow-sm p-6 flex flex-col justify-center text-left">
+          <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">Trung tâm tri thức</div>
+          <div className="text-3xl font-bold text-markee-text mt-2">{stats.knowledgeHub}</div>
+          <div className="text-sm text-gray-400 mt-1">Đã hệ thống hóa</div>
+        </div>
+      </section>
+
+      {loading ? (
+        <div className="text-center py-10 text-sm text-markee-sub">Đang tải dữ liệu Kho Tri thức...</div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Cột trái: Các bộ lọc */}
+          <aside className="lg:col-span-1 bg-white p-5 rounded-xl border border-markee-border shadow-xs space-y-4 self-start">
+            <h3 className="text-xs font-bold text-markee-text uppercase tracking-wider border-b border-gray-100 pb-2">Bộ lọc</h3>
+            
+            <div className="space-y-1.5">
+              <label htmlFor="projectFilterSelect" className="block text-xs font-semibold text-markee-text">Dự án</label>
+              <select
+                id="projectFilterSelect"
+                value={selectedProjectFilter}
+                onChange={(e) => setSelectedProjectFilter(e.target.value)}
+                className="w-full rounded-lg border border-markee-border bg-white px-3 py-2 text-xs font-medium text-markee-text focus:border-markee-primary outline-none transition-colors cursor-pointer"
+              >
+                <option value="Tất cả">Tất cả dự án</option>
+                {projects.map(p => (
+                  <option key={p.id} value={p.name}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Only project filter remains here */}
+          </aside>
+
+          {/* Phần chính: Search & Cards */}
+          <section className="lg:col-span-3 space-y-4">
+            <div className="relative">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-markee-muted">
+                <Search className="w-4 h-4" />
+              </span>
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Tìm kiếm tiêu đề hoặc nội dung tri thức..."
+                className="w-full pl-9 pr-4 py-2.5 text-xs border border-markee-border rounded-xl bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary placeholder:text-markee-muted shadow-2xs"
+              />
+            </div>
+
+            <div className="space-y-4">
+              {filteredSummaries.map((summary, idx) => {
+                const snippet = summary.insights.slice(0, 2).join('; ');
+                return (
+                  <div
+                    key={idx}
+                    onClick={() => setSelectedSummary(summary)}
+                    className="bg-white border border-gray-200 rounded-xl p-5 shadow-2xs hover:shadow-sm hover:border-markee-primary/40 cursor-pointer transition-all space-y-2 flex flex-col justify-between"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <h3 className="font-bold text-markee-text text-sm md:text-base hover:text-markee-primary transition-colors">
+                        {summary.title}
+                      </h3>
+                      <span className="text-[10px] text-markee-muted bg-gray-50 border border-gray-150 px-2 py-0.5 rounded-sm font-semibold shrink-0">
+                        {getRelativeTime(summary.timestamp)}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-markee-muted line-clamp-2">
+                      {snippet || 'Chưa có nội dung tóm tắt chi tiết.'}
+                    </p>
+
+                    <div className="pt-3 border-t border-gray-100 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-markee-muted justify-between">
+                      <div className="flex flex-wrap gap-x-4 gap-y-1">
+                        <div className="flex items-center gap-1">
+                          <span className="font-bold text-markee-text">Dự án:</span>
+                          <span className="text-markee-primary font-semibold">{summary.projectName}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="font-bold text-markee-text">Nguồn:</span>
+                          <span>{summary.contributors}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="font-bold text-markee-text">Công cụ:</span>
+                          <span>{summary.model}</span>
+                        </div>
+                      </div>
+                      <span className="text-markee-primary text-[10px] font-bold">Xem chi tiết →</span>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {filteredSummaries.length === 0 && (
+                <div className="bg-white rounded-xl border border-markee-border p-8 text-center text-markee-sub text-xs">
+                  Không tìm thấy bản tóm tắt tri thức nào phù hợp với bộ lọc/tìm kiếm.
+                </div>
               )}
-            </tbody>
-          </table>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {/* Modal chi tiết Master Summary */}
+      {selectedSummary && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white border border-markee-border rounded-xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="border-b border-markee-border px-6 py-4 bg-markee-bg/10 flex items-center justify-between shrink-0">
+              <h3 className="text-base font-bold text-markee-text">Chi tiết Tri thức Dự án</h3>
+              <button
+                type="button"
+                onClick={() => setSelectedSummary(null)}
+                className="text-markee-muted hover:text-markee-text transition-colors p-1 cursor-pointer font-bold"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              <div className="space-y-4">
+                <div>
+                  <h4 className="text-xs font-bold text-markee-muted uppercase tracking-wider mb-1">Dự án</h4>
+                  <p className="text-sm font-bold text-markee-primary">{selectedSummary.projectName}</p>
+                </div>
+
+                <div>
+                  <h4 className="text-xs font-bold text-markee-muted uppercase tracking-wider mb-1">Tiêu đề tri thức</h4>
+                  <p className="text-base font-bold text-markee-text bg-gray-50 border border-gray-150 p-3 rounded-lg">{selectedSummary.title}</p>
+                </div>
+                
+                <div>
+                  <h4 className="text-xs font-bold text-markee-muted uppercase tracking-wider mb-2">Insight cốt lõi</h4>
+                  <ul className="list-disc pl-5 text-sm text-markee-text space-y-2">
+                    {selectedSummary.insights.map((insight, idx) => (
+                      <li key={idx} className="leading-relaxed">{insight}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Horizontal Meta Info */}
+                <div className="pt-4 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                  <div className="bg-gray-50 border border-gray-150 p-2.5 rounded-lg">
+                    <div className="font-bold text-markee-muted uppercase tracking-wider text-[9px] mb-1">Nguồn</div>
+                    <div className="text-markee-text truncate font-semibold" title={selectedSummary.contributors}>
+                      {selectedSummary.contributors}
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 border border-gray-150 p-2.5 rounded-lg">
+                    <div className="font-bold text-markee-muted uppercase tracking-wider text-[9px] mb-1">Công cụ</div>
+                    <div className="text-markee-text truncate font-semibold" title={selectedSummary.model}>
+                      {selectedSummary.model}
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 border border-gray-150 p-2.5 rounded-lg">
+                    <div className="font-bold text-markee-muted uppercase tracking-wider text-[9px] mb-1">Số Token</div>
+                    <div className="text-markee-text font-semibold">
+                      {selectedSummary.totalTokens?.toLocaleString()} tokens
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 border border-gray-150 p-2.5 rounded-lg">
+                    <div className="font-bold text-markee-muted uppercase tracking-wider text-[9px] mb-1">Thời gian</div>
+                    <div className="text-markee-text font-semibold">
+                      {getRelativeTime(selectedSummary.timestamp)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-markee-border px-6 py-3.5 flex justify-end bg-markee-bg/10 shrink-0">
+              <button
+                type="button"
+                onClick={() => setSelectedSummary(null)}
+                className="px-4 py-2 border border-markee-border bg-white text-markee-text hover:bg-markee-bg rounded-lg transition-colors text-xs font-semibold cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </main>
@@ -1246,10 +2756,42 @@ const getInitials = (name: string) => {
   return name.slice(0, 2).toUpperCase();
 };
 
+function getRelativeTime(dateString: string): string {
+  if (!dateString) return '';
+  const now = new Date();
+  const date = new Date(dateString);
+  
+  const nowDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dateDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  
+  const diffTime = nowDay.getTime() - dateDay.getTime();
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  
+  if (diffDays <= 0) {
+    return 'Hôm nay';
+  }
+  if (diffDays === 1) {
+    return 'Hôm qua';
+  }
+  if (diffDays < 7) {
+    return `${diffDays} ngày trước`;
+  }
+  const diffWeeks = Math.floor(diffDays / 7);
+  if (diffWeeks < 4) {
+    return `${diffWeeks} tuần trước`;
+  }
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths < 12) {
+    return `${diffMonths} tháng trước`;
+  }
+  return `${Math.floor(diffDays / 365)} năm trước`;
+}
+
 function ProjectManagement({ profile }: { profile: UserProfile }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [projectTab, setProjectTab] = useState<'timeline' | 'knowledge_hub'>('timeline');
 
   // Modal logs and members states
   const [members, setMembers] = useState<{ email: string; name: string; avatarColor: string }[]>([]);
@@ -1269,6 +2811,17 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
 
   // AI Tool filter state
   const [selectedTool, setSelectedTool] = useState<string>('Tất cả');
+
+  // Summary states
+  const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [summaryResult, setSummaryResult] = useState<{
+    title: string;
+    insights: string[];
+    contributors: string;
+    totalTokens: number;
+    model: string;
+  } | null>(null);
 
   const selectedMember = useMemo(
     () => members.find(m => m.email === activeMemberEmail) || null,
@@ -1329,11 +2882,30 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
     }
   }
 
+  async function loadProjectLogsList(projId: number, isInitial = false) {
+    setLogsLoading(true);
+    const nextPage = isInitial ? 0 : page + 1;
+    try {
+      const result = await fetchProjectWIPs(projId, nextPage, 20);
+      if (isInitial) {
+        setLogs(result.items);
+      } else {
+        setLogs(prev => [...prev, ...result.items]);
+      }
+      setPage(nextPage);
+      setHasMore(result.hasMore);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLogsLoading(false);
+    }
+  }
+
   async function loadUserLogs(projId: number, userEmail: string, isInitial = false) {
     setLogsLoading(true);
     const nextPage = isInitial ? 0 : page + 1;
     try {
-      const result = await fetchProjectSessionsForUser(projId, userEmail, nextPage, 20);
+      const result = await fetchProjectWIPsForUser(projId, userEmail, nextPage, 20);
       if (isInitial) {
         setLogs(result.items);
       } else {
@@ -1359,7 +2931,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
     setMembersLoading(true);
 
     try {
-      const activeMembers = await fetchProjectMembers(project.id);
+      const activeMembers = await fetchProjectWIPMembers(project.id);
       setMembers(activeMembers);
       if (activeMembers.length > 0) {
         const firstEmail = activeMembers[0].email;
@@ -1387,6 +2959,82 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
   function handleLoadMore() {
     if (selectedProject && activeMemberEmail) {
       loadUserLogs(selectedProject.id, activeMemberEmail, false);
+    }
+  }
+
+  async function handleSummarizeProject() {
+    if (!selectedProject) return;
+    setIsSummarizing(true);
+    setIsSummaryModalOpen(true);
+    setSummaryResult(null);
+    try {
+      const res = await fetch('/api/summarize-project', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: selectedProject.id }),
+      });
+      
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Lỗi khi gọi API tổng hợp tri thức');
+      }
+      
+      setSummaryResult(data);
+    } catch (err: any) {
+      console.error(err);
+      showToast(err.message || 'Lỗi khi tổng hợp tri thức dự án', 'error');
+      setIsSummaryModalOpen(false);
+    } finally {
+      setIsSummarizing(false);
+    }
+  }
+
+  async function handleSaveSummary(newSummary: any) {
+    if (!selectedProject) return;
+    
+    let currentSummaries: any[] = [];
+    if (selectedProject.master_summary) {
+      try {
+        const parsed = JSON.parse(selectedProject.master_summary);
+        if (Array.isArray(parsed)) {
+          currentSummaries = parsed;
+        }
+      } catch (e) {
+        console.error("Error parsing existing master_summary:", e);
+      }
+    }
+    
+    const summaryItem = {
+      title: newSummary.title,
+      insights: newSummary.insights,
+      contributors: newSummary.contributors,
+      totalTokens: newSummary.totalTokens,
+      model: newSummary.model,
+      timestamp: new Date().toISOString(),
+    };
+    
+    const updatedSummaries = [...currentSummaries, summaryItem];
+    const serialized = JSON.stringify(updatedSummaries);
+    
+    try {
+      showToast('Đang lưu bản tổng hợp...', 'loading');
+      await updateProjectSummary(selectedProject.id, serialized);
+      
+      const updatedProj = {
+        ...selectedProject,
+        master_summary: serialized,
+        last_summarized_at: new Date().toISOString(),
+      };
+      setSelectedProject(updatedProj);
+      setProjects(prev => prev.map(p => p.id === selectedProject.id ? updatedProj : p));
+      
+      showToast('Đã lưu tổng hợp tri thức thành công!', 'success');
+      setProjectTab('knowledge_hub');
+      setIsSummaryModalOpen(false);
+      setSummaryResult(null);
+    } catch (err) {
+      console.error(err);
+      showToast('Lỗi khi lưu tổng hợp tri thức', 'error');
     }
   }
 
@@ -1431,10 +3079,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {projects.map((project) => {
-            const updateDate = new Date(project.created_at).toLocaleDateString('vi-VN', {
-              day: 'numeric',
-              month: 'numeric',
-            });
+            const updateDate = getRelativeTime(project.created_at);
 
             return (
               <div
@@ -1523,164 +3168,262 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
             <div className="border-b border-markee-border px-6 py-4 flex items-center justify-between bg-markee-bg/10 shrink-0">
               <div>
                 <h2 className="text-lg font-bold text-markee-text">Lịch sử làm việc: {selectedProject.name}</h2>
-                <p className="text-xs text-markee-muted mt-0.5">Timeline ghi nhận các phiên làm việc của dự án được lọc theo thành viên.</p>
+                <p className="text-xs text-markee-muted mt-0.5">Timeline ghi nhận các phiên làm việc và tri thức của dự án.</p>
               </div>
-              <button
-                onClick={() => setSelectedProject(null)}
-                className="text-markee-muted hover:text-markee-text transition-colors p-1 cursor-pointer font-bold"
-              >
-                ✕
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleSummarizeProject}
+                  className="px-3.5 py-2 bg-markee-primary hover:bg-markee-hover text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                >
+                  Tổng hợp Tri thức Dự án
+                </button>
+                <button
+                  onClick={() => setSelectedProject(null)}
+                  className="text-markee-muted hover:text-markee-text transition-colors p-1 cursor-pointer font-bold"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
 
-            {/* Modal Body - Flex Split (Sidebar + Timeline) */}
-            <div className="flex-1 flex overflow-hidden">
-              {/* Left sidebar: Members */}
-              <aside className="w-64 border-r border-markee-border bg-markee-bg/10 flex flex-col overflow-y-auto p-4 shrink-0">
-                <h3 className="text-[11px] font-bold text-markee-muted uppercase tracking-wider mb-3">Thành viên hoạt động</h3>
-                
-                {membersLoading ? (
-                  <div className="text-xs text-markee-sub py-4">Đang tải thành viên...</div>
-                ) : (
-                  <div className="space-y-1">
-                    {members.map((member) => (
-                      <button
-                        key={member.email}
-                        onClick={() => handleSelectMember(member.email)}
-                        className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-xs font-semibold text-left transition-all cursor-pointer ${
-                          activeMemberEmail === member.email
-                            ? 'bg-markee-primary text-white shadow-xs'
-                            : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
-                        }`}
-                      >
-                        <div
-                          className="w-6 h-6 rounded-full flex items-center justify-center text-white font-bold text-[10px] shrink-0"
-                          style={{
-                            backgroundColor:
-                              activeMemberEmail === member.email
-                                ? 'rgba(255, 255, 255, 0.2)'
-                                : member.avatarColor || '#E3000F',
-                          }}
-                        >
-                          {member.name.charAt(0).toUpperCase()}
-                        </div>
-                        <span className="truncate">{member.name}</span>
-                      </button>
-                    ))}
-                    {members.length === 0 && (
-                      <div className="text-xs text-markee-sub py-4">Dự án chưa có hoạt động nào.</div>
-                    )}
-                  </div>
-                )}
-              </aside>
-
-              {/* Right content: Timeline */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                {/* AI Tool Filter Pills */}
-                {!membersLoading && members.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2 pb-4 border-b border-gray-100">
-                    <span className="text-xs font-semibold text-markee-muted mr-1">Lọc công cụ:</span>
-                    {['Tất cả', 'ChatGPT', 'Gemini', 'Claude'].map((tool) => {
-                      const isActive = selectedTool === tool;
-                      return (
-                        <button
-                          key={tool}
-                          onClick={() => setSelectedTool(tool)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                            isActive
-                              ? 'bg-markee-primary text-white shadow-xs'
-                              : 'bg-gray-100 text-markee-muted hover:bg-gray-200 hover:text-markee-text'
-                          }`}
-                        >
-                          {tool}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {membersLoading || (logsLoading && logs.length === 0) ? (
-                  <div className="text-center py-10 text-sm text-markee-sub">Đang tải nhật ký hoạt động...</div>
-                ) : filteredLogs.length === 0 ? (
-                  <div className="text-center py-10 text-sm text-markee-sub">
-                    {logs.length === 0 ? 'Không có log hoạt động nào.' : `Không có log hoạt động nào sử dụng ${selectedTool}.`}
-                  </div>
-                ) : (
-                  <div className="relative border-l-2 border-markee-border pl-6 ml-3 space-y-8">
-                    {filteredLogs.map((log) => {
-                      const dateStr = new Date(log.created_at).toLocaleString('vi-VN', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        day: '2-digit',
-                        month: '2-digit',
-                      });
-
-                      // AI Tool Badge color mapping
-                      let toolBadgeClass = "bg-gray-100 text-gray-700 border border-gray-200";
-                      const toolLower = (log.ai_tool || '').toLowerCase();
-                      if (toolLower.includes('gpt') || toolLower.includes('chatgpt')) {
-                        toolBadgeClass = "bg-emerald-50 text-emerald-700 border border-emerald-200";
-                      } else if (toolLower.includes('claude') || toolLower.includes('anthropic')) {
-                        toolBadgeClass = "bg-orange-50 text-orange-700 border border-orange-200";
-                      } else if (toolLower.includes('gemini') || toolLower.includes('google')) {
-                        toolBadgeClass = "bg-sky-50 text-sky-700 border border-sky-200";
+            {/* Modal Body */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Tab Selector */}
+              <div className="flex bg-gray-50 border-b border-markee-border px-6 py-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setProjectTab('timeline')}
+                  className={`px-4 py-2 text-xs font-bold transition-all border-b-2 cursor-pointer ${
+                    projectTab === 'timeline'
+                      ? 'border-markee-primary text-markee-primary'
+                      : 'border-transparent text-markee-muted hover:text-markee-text'
+                  }`}
+                >
+                  📅 Lịch sử Dự án
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProjectTab('knowledge_hub')}
+                  className={`px-4 py-2 text-xs font-bold transition-all border-b-2 cursor-pointer ${
+                    projectTab === 'knowledge_hub'
+                      ? 'border-markee-primary text-markee-primary'
+                      : 'border-transparent text-markee-muted hover:text-markee-text'
+                  }`}
+                >
+                  🧠 Knowledge Hub ({
+                    (() => {
+                      if (!selectedProject?.master_summary) return 0;
+                      try {
+                        const parsed = JSON.parse(selectedProject.master_summary);
+                        return Array.isArray(parsed) ? parsed.length : 0;
+                      } catch (e) {
+                        return 0;
                       }
+                    })()
+                  })
+                </button>
+              </div>
 
-                      // Tier Badge color mapping
-                      const tierLower = (log.tier || '').toLowerCase();
-                      const isPro = tierLower.includes('pro') || tierLower.includes('plus') || tierLower.includes('premium');
-                      const tierBadgeClass = isPro
-                        ? "bg-purple-100 text-purple-700 font-semibold px-2 py-0.5 rounded text-xs"
-                        : "bg-gray-200 text-gray-700 px-2 py-0.5 rounded text-xs";
-
+              {/* Tab Content Area */}
+              <div className="flex-1 overflow-hidden flex flex-col">
+                {projectTab === 'knowledge_hub' ? (
+                  <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                    {/* Knowledge Hub summaries cards */}
+                    {(() => {
+                      let summaries: any[] = [];
+                      if (selectedProject?.master_summary) {
+                        try {
+                          const parsed = JSON.parse(selectedProject.master_summary);
+                          if (Array.isArray(parsed)) summaries = parsed;
+                        } catch (e) {
+                          console.error("Error parsing master_summary:", e);
+                        }
+                      }
+                      
+                      if (summaries.length === 0) {
+                        return (
+                          <div className="text-center py-10 text-sm text-markee-muted">
+                            Chưa có bản tổng hợp tri thức nào. Nhấp vào nút "Tổng hợp Tri thức Dự án" ở trên để tạo.
+                          </div>
+                        );
+                      }
+                      
                       return (
-                        <div key={log.id} className="relative">
-                          {/* Timeline Bullet Node */}
-                          <div
-                            className="absolute -left-[31px] top-1 w-4 h-4 rounded-full border-2 border-white shadow-xs"
-                            style={{ backgroundColor: selectedMember?.avatarColor || '#E3000F' }}
-                          />
-                          
-                          {/* Log Item Header */}
-                          <div className="flex flex-wrap items-center gap-2 text-xs">
-                            <span className="font-bold text-markee-text">{dateStr}</span>
-                            <span className="text-markee-muted">— đã sử dụng</span>
-                            <span className={`px-2 py-0.5 rounded text-[11px] font-semibold uppercase ${toolBadgeClass}`}>
-                              {log.ai_tool || 'AI Tool'}
-                            </span>
-                            <span className={tierBadgeClass}>
-                              {log.tier || 'Free'}
-                            </span>
+                        <div className="space-y-4">
+                          {summaries.slice().reverse().map((summary: any, idx: number) => (
+                            <div key={idx} className="bg-white border border-gray-200 rounded-xl p-5 shadow-2xs hover:shadow-sm transition-all space-y-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <h4 className="font-bold text-markee-text text-sm md:text-base">
+                                  {summary.title}
+                                </h4>
+                                <span className="text-[10px] text-markee-muted bg-gray-50 border border-gray-150 px-2 py-0.5 rounded-sm font-semibold shrink-0">
+                                  {getRelativeTime(summary.timestamp)}
+                                </span>
+                              </div>
+
+                              <ul className="list-disc pl-5 text-xs text-markee-text space-y-1.5">
+                                {summary.insights && summary.insights.map((insight: string, i: number) => (
+                                  <li key={i} className="leading-relaxed">{insight}</li>
+                                ))}
+                              </ul>
+
+                              <div className="pt-3 border-t border-gray-100 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-markee-muted">
+                                <div className="flex items-center gap-1">
+                                  <span className="font-bold text-markee-text">Nguồn:</span>
+                                  <span>{summary.contributors}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <span className="font-bold text-markee-text">Công cụ:</span>
+                                  <span>{summary.model}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <span className="font-bold text-markee-text">Số Token:</span>
+                                  <span>{summary.totalTokens?.toLocaleString()} tokens</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  <div className="flex-1 overflow-hidden p-6 flex gap-6">
+                    {/* Left Sidebar: Active Members */}
+                    <div className="w-1/4 min-w-[200px] border-r border-markee-border pr-6 overflow-y-auto flex flex-col">
+                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 h-full flex flex-col">
+                        <h4 className="text-xs font-bold text-markee-muted uppercase tracking-wider mb-3">
+                          Thành viên hoạt động
+                        </h4>
+                        
+                        {membersLoading ? (
+                          <div className="text-xs text-markee-muted py-2">Đang tải...</div>
+                        ) : members.length === 0 ? (
+                          <div className="text-xs text-markee-muted py-2">Không có thành viên nào.</div>
+                        ) : (
+                          <div className="space-y-1.5 overflow-y-auto flex-1 pr-1">
+                            {members.map((m) => {
+                              const isActive = activeMemberEmail === m.email;
+                              return (
+                                <button
+                                  key={m.email}
+                                  type="button"
+                                  onClick={() => handleSelectMember(m.email)}
+                                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all border ${
+                                    isActive
+                                      ? 'bg-markee-primary/10 border-markee-primary/20 text-markee-primary font-bold'
+                                      : 'hover:bg-slate-100 border-transparent text-markee-text'
+                                  }`}
+                                >
+                                  <div
+                                    className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-[10px] text-white shrink-0 select-none shadow-3xs"
+                                    style={{ backgroundColor: m.avatarColor || '#E3000F' }}
+                                  >
+                                    {getInitials(m.name)}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="text-xs font-semibold truncate leading-tight">{m.name}</div>
+                                    <div className="text-[10px] text-markee-muted truncate mt-0.5">@{m.email.split('@')[0]}</div>
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Right Timeline Panel */}
+                    <div className="flex-1 overflow-y-auto pl-2 flex flex-col pr-1 h-full">
+                      {logsLoading && logs.length === 0 ? (
+                        <div className="text-center py-10 text-sm text-markee-sub">Đang tải nhật ký hoạt động...</div>
+                      ) : logs.length === 0 ? (
+                        <div className="text-center py-10 text-sm text-markee-sub">
+                          Không có log hoạt động nào.
+                        </div>
+                      ) : (
+                        <div className="space-y-6">
+                          <div className="relative border-l-2 border-markee-border pl-6 ml-3 space-y-8">
+                            {logs.map((log) => {
+                              const dateStr = new Date(log.created_at).toLocaleString('vi-VN', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                day: '2-digit',
+                                month: '2-digit',
+                              });
+
+                              // AI Tool Badge color mapping
+                              let toolBadgeClass = "bg-gray-100 text-gray-700 border border-gray-200";
+                              const toolLower = (log.ai_tool || '').toLowerCase();
+                              if (toolLower.includes('gpt') || toolLower.includes('chatgpt')) {
+                                toolBadgeClass = "bg-emerald-50 text-emerald-700 border border-emerald-200";
+                              } else if (toolLower.includes('claude') || toolLower.includes('anthropic')) {
+                                toolBadgeClass = "bg-orange-50 text-orange-700 border border-orange-200";
+                              } else if (toolLower.includes('gemini') || toolLower.includes('google')) {
+                                toolBadgeClass = "bg-sky-50 text-sky-700 border border-sky-200";
+                              }
+
+                              // Tier Badge color mapping
+                              const tierLower = (log.tier || '').toLowerCase();
+                              const isPro = tierLower.includes('pro') || tierLower.includes('plus') || tierLower.includes('premium');
+                              const tierBadgeClass = isPro
+                                ? "bg-purple-100 text-purple-700 font-semibold px-2 py-0.5 rounded text-xs"
+                                : "bg-gray-200 text-gray-700 px-2 py-0.5 rounded text-xs";
+
+                              return (
+                                <div key={log.id} className="relative">
+                                  {/* Timeline Bullet Node */}
+                                  <div
+                                    className="absolute -left-[31px] top-1 w-4 h-4 rounded-full border-2 border-white shadow-xs bg-markee-primary"
+                                    title={log.author_id}
+                                  />
+                                  
+                                  {/* Log Item Header */}
+                                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                                    <span className="font-bold text-markee-text">{dateStr}</span>
+                                    <span className="font-semibold text-markee-primary">@{log.author_id?.split('@')[0]}</span>
+                                    <span className="text-markee-muted">— đã sử dụng</span>
+                                    <span className={`px-2 py-0.5 rounded text-[11px] font-semibold uppercase ${toolBadgeClass}`}>
+                                      {log.ai_tool || 'AI Tool'}
+                                    </span>
+                                    <span className={tierBadgeClass}>
+                                      {log.tier || 'Free'}
+                                    </span>
+                                  </div>
+
+                                  {/* Prompt content block */}
+                                  {log.prompt_content && (
+                                    <div className="mt-2.5">
+                                      <blockquote className="px-4 py-3 bg-markee-bg border-l-4 border-markee-primary/30 text-markee-text text-sm rounded-r-lg">
+                                        <div className="flex items-center gap-1.5 text-xs text-markee-muted mb-1.5 font-semibold">
+                                          <span>🪙</span>
+                                          <span>{log.tokens_used || 0} tokens</span>
+                                        </div>
+                                        <PromptText text={log.prompt_content} />
+                                      </blockquote>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
 
-                          {/* Prompt content block */}
-                          {log.prompt_content && (
-                            <div className="mt-2.5">
-                              <blockquote className="px-4 py-3 bg-markee-bg border-l-4 border-markee-primary/30 text-markee-text text-sm rounded-r-lg">
-                                <div className="flex items-center gap-1.5 text-xs text-markee-muted mb-1.5 font-semibold">
-                                  <span>🪙</span>
-                                  <span>{log.tokens_used || 0} tokens</span>
-                                </div>
-                                <PromptText text={log.prompt_content} />
-                              </blockquote>
+                          {/* Load More Button */}
+                          {hasMore && (
+                            <div className="text-center pt-4">
+                              <button
+                                onClick={handleLoadMore}
+                                disabled={logsLoading}
+                                className="px-5 py-2 border border-markee-border rounded-xl bg-white text-markee-text hover:bg-markee-bg font-semibold text-xs transition-all cursor-pointer shadow-xs disabled:opacity-60"
+                              >
+                                {logsLoading ? 'Đang tải...' : 'Tải thêm hoạt động'}
+                              </button>
                             </div>
                           )}
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Load More Button */}
-                {hasMore && (
-                  <div className="text-center pt-4">
-                    <button
-                      onClick={handleLoadMore}
-                      disabled={logsLoading}
-                      className="px-5 py-2 border border-markee-border rounded-xl bg-white text-markee-text hover:bg-markee-bg font-semibold text-xs transition-all cursor-pointer shadow-xs disabled:opacity-60"
-                    >
-                      {logsLoading ? 'Đang tải...' : 'Tải thêm hoạt động'}
-                    </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1743,6 +3486,106 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
               >
                 {isCreating ? 'Đang tạo...' : 'Tạo mới'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Summarize Project Result Modal */}
+      {isSummaryModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+          <div className="bg-white border border-markee-border rounded-xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[85vh]">
+            {/* Header */}
+            <div className="border-b border-markee-border px-6 py-4 bg-markee-bg/10 flex items-center justify-between shrink-0">
+              <h3 className="text-base font-bold text-markee-text">Kết quả tổng hợp tri thức AI</h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSummaryModalOpen(false);
+                  setSummaryResult(null);
+                }}
+                disabled={isSummarizing}
+                className="text-markee-muted hover:text-markee-text transition-colors p-1 cursor-pointer font-bold disabled:opacity-55"
+              >
+                ✕
+              </button>
+            </div>
+            
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              {isSummarizing ? (
+                <div className="flex flex-col items-center justify-center py-12 space-y-3">
+                  <div className="w-10 h-10 border-4 border-markee-primary border-t-transparent rounded-full animate-spin" />
+                  <p className="text-sm font-semibold text-markee-text animate-pulse">AI đang phân tích các WIP và tổng hợp tri thức...</p>
+                  <p className="text-xs text-markee-muted">Quá trình này có thể mất vài giây.</p>
+                </div>
+              ) : summaryResult ? (
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-xs font-bold text-markee-muted uppercase tracking-wider mb-1">Tiêu đề đề xuất</h4>
+                    <p className="text-base font-bold text-markee-text bg-gray-50 border border-gray-150 p-3 rounded-lg">{summaryResult.title}</p>
+                  </div>
+                  
+                  <div>
+                    <h4 className="text-xs font-bold text-markee-muted uppercase tracking-wider mb-2">Insight cốt lõi</h4>
+                    <ul className="list-disc pl-5 text-sm text-markee-text space-y-2">
+                      {summaryResult.insights.map((insight, idx) => (
+                        <li key={idx} className="leading-relaxed">{insight}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Horizontal Meta Info */}
+                  <div className="pt-4 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
+                    <div className="bg-gray-50 border border-gray-150 p-2.5 rounded-lg">
+                      <div className="font-bold text-markee-muted uppercase tracking-wider text-[9px] mb-1">Nguồn</div>
+                      <div className="text-markee-text truncate font-semibold" title={summaryResult.contributors}>
+                        {summaryResult.contributors}
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 border border-gray-150 p-2.5 rounded-lg">
+                      <div className="font-bold text-markee-muted uppercase tracking-wider text-[9px] mb-1">Công cụ</div>
+                      <div className="text-markee-text truncate font-semibold" title={summaryResult.model}>
+                        {summaryResult.model}
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 border border-gray-150 p-2.5 rounded-lg">
+                      <div className="font-bold text-markee-muted uppercase tracking-wider text-[9px] mb-1">Số Token</div>
+                      <div className="text-markee-text font-semibold">
+                        {summaryResult.totalTokens.toLocaleString()} tokens
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 border border-gray-150 p-2.5 rounded-lg">
+                      <div className="font-bold text-markee-muted uppercase tracking-wider text-[9px] mb-1">Thời gian</div>
+                      <div className="text-markee-text font-semibold">Vừa xong</div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-markee-border px-6 py-3.5 flex justify-end gap-2.5 bg-markee-bg/10 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSummaryModalOpen(false);
+                  setSummaryResult(null);
+                }}
+                disabled={isSummarizing}
+                className="px-4 py-2 border border-markee-border bg-white text-markee-muted hover:bg-markee-bg hover:text-markee-text rounded-lg transition-colors text-xs font-semibold cursor-pointer disabled:opacity-55"
+              >
+                Hủy
+              </button>
+              {summaryResult && (
+                <button
+                  type="button"
+                  onClick={() => handleSaveSummary(summaryResult)}
+                  className="px-4 py-2 bg-markee-primary hover:bg-markee-hover text-white rounded-lg transition-colors text-xs font-semibold cursor-pointer"
+                >
+                  Xác nhận Lưu
+                </button>
+              )}
             </div>
           </div>
         </div>

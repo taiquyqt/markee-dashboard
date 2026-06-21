@@ -187,11 +187,25 @@ export async function getCurrentUserProfile(): Promise<UserProfile | null> {
   };
 }
 
-export async function fetchApprovedSkills(page = 0, pageSize = DEFAULT_PAGE_SIZE, userEmail?: string, searchTerm = ""): Promise<PaginatedSkills> {
+export async function fetchApprovedSkills(
+  page = 0,
+  pageSize = DEFAULT_PAGE_SIZE,
+  userEmail?: string,
+  searchTerm = "",
+  teamTrack = ""
+): Promise<PaginatedSkills> {
   const from = page * pageSize;
   const to = from + pageSize - 1;
 
-  let query = supabase.from("skill_library").select("id, created_at, title, markdown_content, category, author_id, status, skill_type, likes_count, downloads_count", { count: "exact" }).eq("status", "approved");
+  let query = supabase
+    .from("skill_library")
+    .select("id, created_at, title, markdown_content, category, author_id, status, skill_type, likes_count, downloads_count", { count: "exact" })
+    .eq("status", "approved")
+    .eq("skill_type", "workflow");
+
+  if (teamTrack) {
+    query = query.eq("team_track", teamTrack);
+  }
 
   const normalizedSearch = searchTerm.trim();
 
@@ -223,7 +237,13 @@ export async function fetchApprovedSkills(page = 0, pageSize = DEFAULT_PAGE_SIZE
 }
 
 export async function fetchTrendingSkills(limit = 5, userEmail?: string): Promise<SkillCard[]> {
-  const { data, error } = await supabase.from("skill_library").select("id, created_at, title, markdown_content, category, author_id, status, skill_type, likes_count, downloads_count").eq("status", "approved").order("likes_count", { ascending: false, nullsFirst: false }).limit(100);
+  const { data, error } = await supabase
+    .from("skill_library")
+    .select("id, created_at, title, markdown_content, category, author_id, status, skill_type, likes_count, downloads_count")
+    .eq("status", "approved")
+    .eq("skill_type", "workflow")
+    .order("likes_count", { ascending: false, nullsFirst: false })
+    .limit(100);
 
   if (error) {
     console.error("Error fetching trending skills:", error);
@@ -241,6 +261,22 @@ export async function fetchTrendingSkills(limit = 5, userEmail?: string): Promis
     .map((row) => normalizeSkill(row, authorMap, likedSkillIds))
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
+}
+
+export async function fetchTeamTracks(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("skill_library")
+    .select("team_track")
+    .eq("status", "approved")
+    .eq("skill_type", "workflow");
+
+  if (error) {
+    console.error("Error fetching team tracks:", error);
+    return [];
+  }
+
+  const tracks = Array.from(new Set(data?.map((d) => d.team_track).filter(Boolean)));
+  return tracks.sort();
 }
 
 export async function fetchMyWorkspaceSkills(email: string): Promise<SkillCard[]> {
@@ -454,6 +490,8 @@ export interface Project {
   logCount?: number;
   authorName?: string;
   members?: { email: string; name: string; avatarColor: string }[];
+  master_summary?: string | null;
+  last_summarized_at?: string | null;
 }
 
 export interface AISession {
@@ -716,4 +754,295 @@ export async function createNewProject(name: string, userEmail: string): Promise
 
   if (error) throw error;
   return data as Project;
+}
+
+export interface AILicense {
+  id: number;
+  created_at: string;
+  email: string;
+  ai_tool: string;
+  plan_name: string;
+  monthly_cost: number;
+  expiration_date: string;
+  status: string | null;
+  weekly_used?: string;
+  usagePercent?: number;
+}
+
+export interface AIUsageStat {
+  id: number;
+  created_at: string;
+  email: string;
+  ai_tool: string;
+  weekly_used: string;
+  reset_time: string;
+}
+
+export async function fetchAILicenses(): Promise<AILicense[]> {
+  const { data, error } = await supabase.from("ai_licenses").select("*").order("created_at", { ascending: false });
+  if (error) {
+    console.error("Error fetching AI licenses:", error);
+    return [];
+  }
+  return data || [];
+}
+
+export async function fetchAIUsageStats(): Promise<AIUsageStat[]> {
+  const { data, error } = await supabase.from("ai_usage_stats").select("*").order("created_at", { ascending: false });
+  if (error) {
+    console.error("Error fetching AI usage stats:", error);
+    return [];
+  }
+  return data || [];
+}
+
+export async function createAILicense(license: {
+  email: string;
+  ai_tool: string;
+  plan_name: string;
+  monthly_cost: number;
+  expiration_date: string;
+  status?: string;
+}): Promise<AILicense> {
+  const payload = {
+    ...license,
+    status: license.status || 'Active'
+  };
+  const { data, error } = await supabase.from("ai_licenses").insert(payload).select("*").single();
+  if (error) throw error;
+  return data;
+}
+
+export async function renewAILicense(id: number, newExpirationDate: string): Promise<AILicense> {
+  const { data, error } = await supabase
+    .from("ai_licenses")
+    .update({ 
+      expiration_date: newExpirationDate,
+      status: 'Active'
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateAILicense(id: number, updates: {
+  ai_tool: string;
+  plan_name: string;
+  monthly_cost: number;
+  expiration_date: string;
+  status?: string | null;
+}): Promise<AILicense> {
+  // If the expiration date is set to a future date, set status to Active
+  const status = new Date(updates.expiration_date) >= new Date() ? 'Active' : (updates.status || 'Active');
+  const { data, error } = await supabase
+    .from("ai_licenses")
+    .update({
+      ...updates,
+      status
+    })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function cancelAILicense(id: number): Promise<AILicense> {
+  const { data, error } = await supabase
+    .from("ai_licenses")
+    .update({ status: 'Canceled' })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function fetchUserAILicenses(email: string): Promise<AILicense[]> {
+  const { data, error } = await supabase.from("ai_licenses").select("*").eq("email", email).order("created_at", { ascending: false });
+  if (error) {
+    console.error("Error fetching user AI licenses:", error);
+    return [];
+  }
+  return data || [];
+}
+
+export async function fetchUserAIUsageStats(email: string): Promise<AIUsageStat[]> {
+  const { data, error } = await supabase.from("ai_usage_stats").select("*").eq("email", email).order("created_at", { ascending: false });
+  if (error) {
+    console.error("Error fetching user AI usage stats:", error);
+    return [];
+  }
+  return data || [];
+}
+
+export async function updateProjectSummary(projectId: number, summaryJson: string): Promise<void> {
+  const { error } = await supabase
+    .from("projects")
+    .update({
+      master_summary: summaryJson,
+      last_summarized_at: new Date().toISOString()
+    })
+    .eq("id", projectId);
+  if (error) throw error;
+}
+
+export async function fetchCurationStats(): Promise<{ rawSessions: number; wipDrafts: number; knowledgeHub: number }> {
+  const { count: sessionCount } = await supabase
+    .from('ai_sessions')
+    .select('*', { count: 'exact', head: true });
+    
+  const { count: wipCount } = await supabase
+    .from('skill_library')
+    .select('*', { count: 'exact', head: true })
+    .eq('skill_type', 'wip');
+    
+  const { data: projects } = await supabase
+    .from('projects')
+    .select('master_summary');
+    
+  let summaryCount = 0;
+  if (projects) {
+    projects.forEach(p => {
+      if (p.master_summary) {
+        try {
+          const parsed = JSON.parse(p.master_summary);
+          if (Array.isArray(parsed)) {
+            summaryCount += parsed.length;
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+    });
+  }
+  
+  return {
+    rawSessions: sessionCount || 0,
+    wipDrafts: wipCount || 0,
+    knowledgeHub: summaryCount
+  };
+}
+
+export async function fetchProjectWIPMembers(projectId: number): Promise<{ email: string; name: string; avatarColor: string }[]> {
+  const { data, error } = await supabase
+    .from("skill_library")
+    .select("author_id")
+    .eq("project_id", projectId)
+    .eq("skill_type", "wip");
+    
+  if (error || !data) return [];
+  
+  const emails = Array.from(new Set(data.map(d => d.author_id).filter(Boolean)));
+  if (emails.length === 0) return [];
+  
+  const { data: userData } = await supabase
+    .from("users")
+    .select("email, full_name, avatar_color")
+    .in("email", emails);
+    
+  const userMap = new Map<string, { name: string; avatarColor: string }>();
+  userData?.forEach(u => {
+    if (u.email) {
+      userMap.set(u.email, {
+        name: u.full_name || u.email.split('@')[0],
+        avatarColor: u.avatar_color || "#E3000F"
+      });
+    }
+  });
+  
+  return emails.map(email => {
+    const u = userMap.get(email);
+    return {
+      email,
+      name: u?.name || email.split('@')[0],
+      avatarColor: u?.avatarColor || "#E3000F"
+    };
+  });
+}
+
+export async function fetchProjectWIPsForUser(
+  projectId: number,
+  authorId: string,
+  page = 0,
+  pageSize = 20
+): Promise<{ items: AISession[]; total: number; hasMore: boolean }> {
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+
+  const { data, error, count } = await supabase
+    .from("skill_library")
+    .select("*", { count: "exact" })
+    .eq("project_id", projectId)
+    .eq("skill_type", "wip")
+    .eq("author_id", authorId)
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  if (error) {
+    console.error("Error fetching project WIPs for user:", error);
+    return { items: [], total: 0, hasMore: false };
+  }
+
+  const items: AISession[] = (data || []).map(row => ({
+    id: row.id,
+    created_at: row.created_at,
+    ai_tool: row.category || 'WIP Draft',
+    task_type: 'WIP',
+    prompt_content: row.markdown_content,
+    tokens_used: row.session_tokens || 0,
+    author_id: row.author_id,
+    project_id: row.project_id,
+    tier: 'WIP'
+  }));
+
+  const total = count || 0;
+  return {
+    items,
+    total,
+    hasMore: to + 1 < total
+  };
+}
+
+export async function fetchProjectWIPs(
+  projectId: number,
+  page = 0,
+  pageSize = 20
+): Promise<{ items: AISession[]; total: number; hasMore: boolean }> {
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+
+  const { data, error, count } = await supabase
+    .from("skill_library")
+    .select("*", { count: "exact" })
+    .eq("project_id", projectId)
+    .eq("skill_type", "wip")
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  if (error) {
+    console.error("Error fetching project WIPs:", error);
+    return { items: [], total: 0, hasMore: false };
+  }
+
+  const items: AISession[] = (data || []).map(row => ({
+    id: row.id,
+    created_at: row.created_at,
+    ai_tool: row.category || 'WIP Draft',
+    task_type: 'WIP',
+    prompt_content: row.markdown_content,
+    tokens_used: row.session_tokens || 0,
+    author_id: row.author_id,
+    project_id: row.project_id,
+    tier: 'WIP'
+  }));
+
+  const total = count || 0;
+  return {
+    items,
+    total,
+    hasMore: to + 1 < total
+  };
 }

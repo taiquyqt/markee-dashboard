@@ -1,12 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { 
-  X, 
-  BookOpen, 
-  Download, 
-  CheckCircle2, 
-  Zap, 
+import {
+  X,
+  BookOpen,
+  Download,
+  CheckCircle2,
+  Zap,
   Copy,
   Database,
   HelpCircle,
@@ -34,10 +34,12 @@ export default function UserGuideModal({ isOpen, onClose }: UserGuideModalProps)
       {/* Modal Container */}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="bg-white border border-markee-border rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-          <div className="bg-linear-to-r from-markee-light/5 via-white to-white border-b border-markee-border px-6 py-4 flex items-center justify-between sticky top-0">
+          <div className="bg-gradient-to-r from-markee-light/5 via-white to-white border-b border-markee-border px-6 py-4 flex items-center justify-between sticky top-0">
             <div className="flex items-center gap-3">
               <BookOpen className="w-6 h-6 text-markee-primary" />
-              <h2 className="text-xl font-bold bg-linear-to-r from-slate-900 via-red-600 to-rose-600 bg-clip-text text-transparent">🚀 Cài đặt extention Markee AI Tracker</h2>
+              <h2 className="text-xl font-bold bg-gradient-to-r from-slate-900 via-red-600 to-rose-600 bg-clip-text text-transparent">
+                🚀 Cài đặt extention Markee AI Tracker
+              </h2>
             </div>
             <button
               onClick={onClose}
@@ -52,8 +54,8 @@ export default function UserGuideModal({ isOpen, onClose }: UserGuideModalProps)
             {/* Intro */}
             <div className="mb-8 p-4 bg-markee-bg border border-markee-border rounded-lg">
               <p className="text-markee-muted text-sm leading-relaxed">
-                Chào mừng bạn đến với <span className="font-bold text-markee-primary">Markee AI Tracker</span>! 
-                Đây là tiện ích giúp bạn lưu lại những câu lệnh hay nhất khi dùng AI và tự động ghi nhận đóng góp vào Thư viện chung. 
+                Chào mừng bạn đến với <span className="font-bold text-markee-primary">Markee AI Tracker</span>!
+                Đây là tiện ích giúp bạn lưu lại những câu lệnh hay nhất khi dùng AI và tự động ghi nhận đóng góp vào Thư viện chung.
                 Chỉ mất đúng <span className="font-bold text-markee-text">2 phút</span> để cài đặt theo các bước dưới đây!
               </p>
             </div>
@@ -80,31 +82,28 @@ export default function UserGuideModal({ isOpen, onClose }: UserGuideModalProps)
             <div className="flex gap-2 mb-6 border-b border-markee-border">
               <button
                 onClick={() => setActiveTab('install')}
-                className={`px-4 py-2 font-medium transition-all ${
-                  activeTab === 'install'
+                className={`px-4 py-2 font-medium transition-all ${activeTab === 'install'
                     ? 'text-markee-primary border-b-2 border-markee-primary'
                     : 'text-markee-muted hover:text-markee-text'
-                }`}
+                  }`}
               >
                 📦 Cài đặt
               </button>
               <button
                 onClick={() => setActiveTab('usage')}
-                className={`px-4 py-2 font-medium transition-all ${
-                  activeTab === 'usage'
+                className={`px-4 py-2 font-medium transition-all ${activeTab === 'usage'
                     ? 'text-markee-primary border-b-2 border-markee-primary'
                     : 'text-markee-muted hover:text-markee-text'
-                }`}
+                  }`}
               >
                 🚀 Sử dụng
               </button>
               <button
                 onClick={() => setActiveTab('support')}
-                className={`px-4 py-2 font-medium transition-all ${
-                  activeTab === 'support'
+                className={`px-4 py-2 font-medium transition-all ${activeTab === 'support'
                     ? 'text-markee-primary border-b-2 border-markee-primary'
                     : 'text-markee-muted hover:text-markee-text'
-                }`}
+                  }`}
               >
                 🆘 Hỗ trợ
               </button>
@@ -172,60 +171,98 @@ export default function UserGuideModal({ isOpen, onClose }: UserGuideModalProps)
 
             {activeTab === 'usage' && (
               <div className="space-y-6">
+                {/* Tính năng 1 */}
                 <div>
                   <h3 className="text-lg font-bold text-markee-text mb-4 flex items-center gap-2">
-                    <Zap className="w-5 h-5 text-yellow-500" />
-                    Tính năng &quot;Tàng hình&quot;: Auto Log
-                  </h3>
-                  <div className="bg-markee-bg/50 border border-markee-border rounded-lg p-4 space-y-3">
-                    <p className="text-markee-muted text-sm">
-                      Khi bạn truy cập ChatGPT, Claude hoặc Gemini và trò chuyện bình thường, Markee sẽ âm thầm chạy ngầm, tự động đếm Token và ghi nhận đóng góp.
-                    </p>
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-bold text-markee-text mb-4 flex items-center gap-2">
-                    <Copy className="w-5 h-5 text-markee-primary" />
-                    Tính năng &quot;Đúc kết&quot;: Lưu Prompt xuất sắc
+                    <Copy className="w-5 h-5 text-purple-600" />
+                    Tính năng 1: Đúc kết Kỹ năng (Lưu Workflow)
                   </h3>
                   <div className="bg-markee-bg/50 border border-markee-border rounded-lg p-4 space-y-4">
                     <p className="text-markee-muted text-sm mb-3">
-                      Khi bạn có một phiên trò chuyện hay và muốn lưu lại cách làm đó, hãy làm theo 2 bước sau:
+                      Khi bạn có một chuỗi lệnh hay và muốn lưu thành Kỹ năng cho toàn công ty học hỏi:
                     </p>
-
                     <div className="space-y-3">
                       <div className="flex gap-3">
-                        <div className="shrink-0 bg-markee-light/10 text-markee-primary rounded-full w-7 h-7 flex items-center justify-center text-sm font-bold">1️⃣</div>
+                        <div className="shrink-0 bg-markee-light/10 text-markee-primary rounded-full w-7 h-7 flex items-center justify-center text-sm font-bold">1</div>
                         <div>
-                          <p className="text-markee-text font-medium text-sm mb-1">Copy Lệnh Đúc Kết</p>
-                          <p className="text-markee-muted text-sm">Bấm Nút 1️⃣ ở bảng điều khiển Markee. Hệ thống sẽ tự động copy một câu lệnh bí mật vào clipboard của bạn.</p>
+                          <p className="text-markee-text font-medium text-sm mb-1">Copy Lệnh</p>
+                          <p className="text-markee-muted text-sm">Bấm nút <span className="font-bold text-purple-600">[Lệnh Kỹ Năng]</span> màu tím trên Extension để copy câu lệnh mồi.</p>
                         </div>
                       </div>
-
                       <div className="flex gap-3">
-                        <div className="shrink-0 bg-markee-light/10 text-markee-primary rounded-full w-7 h-7 flex items-center justify-center text-sm font-bold">2️⃣</div>
+                        <div className="shrink-0 bg-markee-light/10 text-markee-primary rounded-full w-7 h-7 flex items-center justify-center text-sm font-bold">2</div>
                         <div>
-                          <p className="text-markee-text font-medium text-sm mb-1">Nhập lệnh vào AI</p>
-                          <p className="text-markee-muted text-sm">Nhấp vào ô chat, ấn <span className="font-mono bg-white border border-markee-border px-1.5 py-0.5 rounded text-xs">Ctrl + V</span> để dán và gửi cho AI.</p>
+                          <p className="text-markee-text font-medium text-sm mb-1">Ra lệnh cho AI</p>
+                          <p className="text-markee-muted text-sm">Dán (<span className="font-mono bg-white border border-markee-border px-1.5 py-0.5 rounded text-xs">Ctrl + V</span>) vào khung chat và gửi cho AI.</p>
                         </div>
                       </div>
-
                       <div className="flex gap-3">
-                        <div className="shrink-0 bg-markee-light/10 text-markee-primary rounded-full w-7 h-7 flex items-center justify-center text-sm font-bold">3️⃣</div>
+                        <div className="shrink-0 bg-markee-light/10 text-markee-primary rounded-full w-7 h-7 flex items-center justify-center text-sm font-bold">3</div>
                         <div>
-                          <p className="text-markee-text font-medium text-sm mb-1">Lưu vào Thư viện</p>
-                          <p className="text-markee-muted text-sm">Đợi AI gõ xong bảng tóm tắt kỹ năng, bấm Nút 2️⃣. Markee sẽ tự động quét, đóng gói và gửi kỹ năng lên Thư viện công ty.</p>
+                          <p className="text-markee-text font-medium text-sm mb-1">Lưu Kỹ năng</p>
+                          <p className="text-markee-muted text-sm">Đợi AI tóm tắt xong, bấm nút <span className="font-bold text-green-600">[Lưu Kỹ Năng]</span> màu xanh lá. Hệ thống sẽ tự động đóng gói và đẩy lên Thư viện Kỹ năng.</p>
                         </div>
                       </div>
-                    </div>
-
-                    <div className="bg-markee-bg rounded p-3 border-l-2 border-markee-primary border-t border-r border-b border-markee-border">
-                      <p className="text-markee-primary text-xs font-semibold mb-1">📥 Thêm một lợi ích</p>
-                      <p className="text-markee-muted text-sm">Ngay sau khi lưu thành công, bạn có thể bấm nút 📥 để tải file .md về máy làm tài sản riêng của mình!</p>
                     </div>
                   </div>
                 </div>
+
+                {/* Tính năng 2 */}
+                <div>
+                  <h3 className="text-lg font-bold text-markee-text mb-4 flex items-center gap-2">
+                    <Database className="w-5 h-5 text-orange-500" />
+                    Tính năng 2: Ghi nhận Tiến độ (Lưu WIP)
+                  </h3>
+                  <div className="bg-markee-bg/50 border border-markee-border rounded-lg p-4 space-y-4">
+                    <p className="text-markee-muted text-sm mb-3">
+                      Khi bạn vừa hoàn thành một task và muốn báo cáo tiến độ/tri thức nhanh cho dự án:
+                    </p>
+                    <div className="space-y-3">
+                      <div className="flex gap-3">
+                        <div className="shrink-0 bg-markee-light/10 text-markee-primary rounded-full w-7 h-7 flex items-center justify-center text-sm font-bold">1</div>
+                        <div>
+                          <p className="text-markee-text font-medium text-sm mb-1">Copy Lệnh</p>
+                          <p className="text-markee-muted text-sm">Bấm nút <span className="font-bold text-orange-500">[Lệnh Tóm Tắt]</span> màu cam trên Extension.</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3">
+                        <div className="shrink-0 bg-markee-light/10 text-markee-primary rounded-full w-7 h-7 flex items-center justify-center text-sm font-bold">2</div>
+                        <div>
+                          <p className="text-markee-text font-medium text-sm mb-1">Cung cấp dữ liệu</p>
+                          <p className="text-markee-muted text-sm">Dán vào khung chat, ghi thêm vài dòng tóm tắt công việc bạn vừa làm rồi gửi cho AI.</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3">
+                        <div className="shrink-0 bg-markee-light/10 text-markee-primary rounded-full w-7 h-7 flex items-center justify-center text-sm font-bold">3</div>
+                        <div>
+                          <p className="text-markee-text font-medium text-sm mb-1">Lưu Tiến độ</p>
+                          <p className="text-markee-muted text-sm">Đợi AI viết báo cáo chuẩn form, bấm nút <span className="font-bold text-orange-500">[Lưu Tóm Tắt]</span> màu cam. Dữ liệu sẽ được đẩy vào Lịch sử Dự án.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tính năng 3 */}
+                <div>
+                  <h3 className="text-lg font-bold text-markee-text mb-4 flex items-center gap-2">
+                    <Zap className="w-5 h-5 text-blue-500" />
+                    Tính năng 3: Theo dõi Token tự động
+                  </h3>
+                  <div className="bg-markee-bg/50 border border-markee-border rounded-lg p-4 space-y-3">
+                    <p className="text-markee-muted text-sm flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                      <span>Hệ thống sẽ <span className="font-bold text-markee-text">tự động chạy ngầm</span> để đếm số Token bạn đã sử dụng sau mỗi phiên chat.</span>
+                    </p>
+                    <p className="text-markee-muted text-sm flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                      <span>
+                        Đồng thời, tiện ích sẽ tự động đồng bộ <span className="font-bold text-markee-text">Hạn mức tuần (% Usage)</span> của các tài khoản (Claude/Gemini) lên Dashboard. Việc này giúp bạn quản lý tập trung, đồng thời <span className="font-bold text-markee-text">giúp Admin kịp thời nắm bắt để gia hạn hoặc cấp thêm tài nguyên</span> ngay khi bạn sắp hết hạn mức, đảm bảo công việc không bị gián đoạn!
+                      </span>
+                    </p>
+                  </div>
+                </div>
+
               </div>
             )}
 
