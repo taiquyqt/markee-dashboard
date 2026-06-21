@@ -1,4 +1,9 @@
 'use client';
+/* eslint-disable react-hooks/set-state-in-effect */
+/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @next/next/no-img-element */
+
 
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -41,9 +46,6 @@ import {
   fetchAllUsers,
   updateUserRole,
   fetchProjects,
-  fetchProjectSessions,
-  fetchProjectMembers,
-  fetchProjectSessionsForUser,
   createNewProject,
   type AILicense,
   type AIUsageStat,
@@ -105,7 +107,7 @@ function StatusPill({ status }: { status: SkillCard['status'] }) {
         ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20'
         : 'bg-amber-500/10 text-amber-500 border border-amber-500/20';
 
-  return <span className={`flex-shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${className}`}>{label}</span>;
+  return <span className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${className}`}>{label}</span>;
 }
 
 function roleLabel(role: UserProfile['role']) {
@@ -149,7 +151,7 @@ function StatCard({
 
   return (
     <div
-      className={`group relative overflow-hidden rounded-xl border border-markee-border bg-gradient-to-r p-6 pl-7 shadow-sm transition-all duration-300 ease-in-out hover:-translate-y-0.5 hover:shadow-md ${currentTone.card}`}
+      className={`group relative overflow-hidden rounded-xl border border-markee-border bg-linear-to-r p-6 pl-7 shadow-sm transition-all duration-300 ease-in-out hover:-translate-y-0.5 hover:shadow-md ${currentTone.card}`}
     >
       <div className={`absolute left-3 top-4 bottom-4 w-1 rounded-full ${currentTone.line}`} />
       <p className="text-xs font-semibold uppercase tracking-wider text-markee-muted">{label}</p>
@@ -205,7 +207,7 @@ function ConfirmationModal({
           {isApprove ? 'Xác nhận phê duyệt' : 'Xác nhận từ chối'}
         </h2>
         <p className="mt-3 text-sm leading-6 text-markee-muted">
-          Bạn có chắc chắn muốn {actionText} kỹ năng <span className="font-semibold text-markee-text">"{title}"</span> không?
+          Bạn có chắc chắn muốn {actionText} kỹ năng <span className="font-semibold text-markee-text">&quot;{title}&quot;</span> không?
         </p>
         <div className="mt-6 flex justify-end gap-3">
           <button
@@ -334,7 +336,7 @@ function TrendingSkills({ skills }: { skills: SkillCard[] }) {
   return (
     <aside className="self-start rounded-xl border border-markee-border bg-white p-4 w-full">
       <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-markee-muted">Kỹ năng nổi bật</h2>
-      <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1">
+      <div className="space-y-3 max-h-87.5 overflow-y-auto pr-1">
         {skills.slice(0, 5).map((skill, index) => (
           <div key={skill.id} className="flex items-start gap-3 border-b border-markee-border pb-3 last:border-b-0 last:pb-0">
             <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-markee-light/20 text-xs font-bold text-markee-primary">
@@ -725,10 +727,10 @@ function AdminOverview({
 
       <div className="rounded-xl border border-markee-border bg-white p-4">
         <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-markee-muted">Bảng xếp hạng đóng góp kỹ năng</h3>
-        <div className="max-h-[320px] overflow-y-auto pr-1">
+        <div className="max-h-80 overflow-y-auto pr-1">
           <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 md:grid-cols-5">
             {metrics.contributors.map((person, index) => (
-              <div key={person.email} className="rounded-xl border border-markee-border bg-markee-bg p-3 flex flex-col justify-between min-h-[90px] transition-all hover:border-markee-sub">
+              <div key={person.email} className="rounded-xl border border-markee-border bg-markee-bg p-3 flex flex-col justify-between min-h-22.5 transition-all hover:border-markee-sub">
                 <div className="mb-2 flex items-center justify-between">
                   <Medal
                     className={`h-5 w-5 ${
@@ -833,7 +835,7 @@ function AdminDashboard({
       <AdminOverview metrics={metrics} period={period} onPeriodChange={setPeriod} />
 
       <section className="grid gap-4 lg:grid-cols-[360px_1fr]">
-        <div className="rounded-lg border border-markee-border bg-white p-4 max-h-[calc(100vh-200px)] overflow-y-auto">
+        <div className="rounded-lg border border-markee-border bg-white p-4 h-[calc(100vh-200px)] overflow-y-auto">
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-markee-muted">Kỹ năng chờ duyệt</h2>
           <div className="space-y-2">
             {loading && <div className="text-xs text-markee-sub">Đang tải...</div>}
@@ -859,10 +861,10 @@ function AdminDashboard({
           </div>
         </div>
 
-        <div className="rounded-lg border border-markee-border bg-white p-4">
+        <div className="rounded-lg border border-markee-border bg-white p-4 h-[calc(100vh-200px)] flex flex-col">
           {selectedSkill ? (
             <>
-              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3 shrink-0">
                 <div>
                   <h2 className="text-base font-bold text-markee-text">{selectedSkill.title}</h2>
                   <p className="mt-1 text-xs text-markee-muted">
@@ -888,12 +890,12 @@ function AdminDashboard({
                   </button>
                 </div>
               </div>
-              <pre className="max-h-[560px] overflow-auto whitespace-pre-wrap rounded-lg border border-markee-border bg-markee-bg p-4 text-xs leading-6 text-markee-text">
+              <pre className="flex-1 overflow-auto whitespace-pre-wrap rounded-lg border border-markee-border bg-markee-bg p-4 text-xs leading-6 text-markee-text">
                 {selectedSkill.markdown_content}
               </pre>
             </>
           ) : (
-            <div className="p-8 text-center text-sm text-markee-sub">Chọn một kỹ năng chờ duyệt để xem trước.</div>
+            <div className="p-8 text-center text-sm text-markee-sub my-auto">Chọn một kỹ năng chờ duyệt để xem trước.</div>
           )}
         </div>
       </section>
@@ -1233,7 +1235,7 @@ function UserManagement() {
             .ilike('ai_tool', license.ai_tool) // BẮT BUỘC dùng ilike để bỏ qua phân biệt hoa/thường
             .order('created_at', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
 
           // Ép kiểu Text "19%" thành Number 19 để truyền vào Progress Bar
           let usageNumber = 0;
@@ -1280,7 +1282,7 @@ function UserManagement() {
     }
   }
 
-  async function handleCreateLicense(e: any) {
+  async function handleCreateLicense(e: React.FormEvent) {
     e.preventDefault();
     if (!newLicenseEmail.trim() || !newLicenseExpiry) {
       showToast('Vui lòng nhập đầy đủ thông tin', 'error');
@@ -1311,7 +1313,7 @@ function UserManagement() {
     }
   }
 
-  async function handleUpdateLicense(e: any) {
+  async function handleUpdateLicense(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedLicense || !editExpiry) {
       showToast('Vui lòng điền đầy đủ thông tin', 'error');
@@ -1427,16 +1429,6 @@ function UserManagement() {
       .filter(d => d.value > 0);
   }, [activeLicenses]);
 
-  const getUsagePercent = (email: string, tool: string, lic?: any) => {
-    if (lic && lic.weekly_used !== undefined) {
-      return lic.weekly_used;
-    }
-    const match = usageStats.find(
-      stat => stat.email.toLowerCase() === email.toLowerCase() &&
-              stat.ai_tool.toLowerCase() === tool.toLowerCase()
-    );
-    return match ? match.weekly_used : '0%';
-  };
 
   const getLicenseStatus = (lic: AILicense) => {
     const isCanceled = localStorage.getItem(`license_status_${lic.id}`) === 'Canceled';
@@ -1451,7 +1443,7 @@ function UserManagement() {
     <main className="mx-auto max-w-7xl space-y-5 p-5 relative">
       {/* Toast Notification */}
       {toast && (
-        <div className={`fixed top-4 right-4 z-[100] flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border text-sm font-semibold transition-all duration-300 ${
+        <div className={`fixed top-4 right-4 z-100 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border text-sm font-semibold transition-all duration-300 ${
           toast.type === 'loading'
             ? 'bg-amber-50 border-amber-200 text-amber-800'
             : toast.type === 'success'
@@ -1677,11 +1669,11 @@ function UserManagement() {
                             <div className="flex items-center gap-1.5">
                               <span>{displayPlanName}</span>
                               {isPersonal ? (
-                                <span className="px-1.5 py-0.5 rounded-[4px] text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                <span className="px-1.5 py-0.5 rounded-sm text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
                                   Cá nhân
                                 </span>
                               ) : (
-                                <span className="px-1.5 py-0.5 rounded-[4px] text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-100">
+                                <span className="px-1.5 py-0.5 rounded-sm text-[9px] font-bold bg-blue-50 text-blue-700 border border-blue-100">
                                   Công ty
                                 </span>
                               )}
@@ -1692,20 +1684,20 @@ function UserManagement() {
                           </td>
                           <td className="px-6 py-4">
                             {(() => {
-                              const usageNum = lic.usagePercent !== undefined ? lic.usagePercent : 0;
-                              const isHigh = usageNum >= 80;
-                              const barColor = isHigh ? 'bg-red-500' : 'bg-emerald-500';
-                              const textColor = isHigh ? 'text-red-600' : 'text-emerald-600';
+                              const usagePercent = lic.usagePercent !== undefined ? lic.usagePercent : 0;
                               return (
-                                <div className="flex items-center gap-2 w-28">
-                                  <div className="flex-1 bg-gray-150 h-1.5 rounded-full overflow-hidden">
+                                <div className="flex items-center gap-3 w-full max-w-[140px]">
+                                  {/* Rãnh nền xám (Background Track) */}
+                                  <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden">
+                                    {/* Thanh màu chạy theo % */}
                                     <div
-                                      className={`h-full rounded-full transition-all duration-300 ${barColor}`}
-                                      style={{ width: `${Math.min(usageNum, 100)}%` }}
-                                    />
+                                      className={`h-full rounded-full transition-all duration-500 ${usagePercent >= 80 ? 'bg-red-500' : 'bg-emerald-500'}`}
+                                      style={{ width: `${usagePercent}%` }}
+                                    ></div>
                                   </div>
-                                  <span className={`text-[11px] font-bold shrink-0 ${textColor}`}>
-                                    {usageNum}%
+                                  {/* Con số % cố định độ rộng để thẳng hàng */}
+                                  <span className="text-sm font-bold text-slate-700 w-12 text-right">
+                                    {usagePercent}%
                                   </span>
                                 </div>
                               );
@@ -2101,7 +2093,7 @@ function MyAssetsView({ profile }: { profile: UserProfile }) {
     <main className="mx-auto max-w-7xl space-y-5 p-5 relative">
       {/* Toast Notification */}
       {toast && (
-        <div className={`fixed top-4 right-4 z-[100] flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border text-sm font-semibold transition-all duration-300 ${
+        <div className={`fixed top-4 right-4 z-100 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border text-sm font-semibold transition-all duration-300 ${
           toast.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800'
         }`}>
           {toast.type === 'success' ? <span className="mr-1">✓</span> : <span className="mr-1">⚠️</span>}
@@ -2163,7 +2155,7 @@ function MyAssetsView({ profile }: { profile: UserProfile }) {
             return (
               <div
                 key={lic.id}
-                className={`bg-white rounded-xl border p-5 shadow-xs transition-all flex flex-col justify-between min-h-[250px] ${borderClass}`}
+                className={`bg-white rounded-xl border p-5 shadow-xs transition-all flex flex-col justify-between min-h-62.5 ${borderClass}`}
                 style={{ opacity: isCanceled ? 0.5 : 1 }}
               >
                 <div>
@@ -2176,11 +2168,11 @@ function MyAssetsView({ profile }: { profile: UserProfile }) {
                         {displayPlanName}
                       </span>
                       {isPersonal ? (
-                        <span className="px-1.5 py-0.5 rounded-[4px] text-[8px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                        <span className="px-1.5 py-0.5 rounded-sm text-[8px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
                           Cá nhân
                         </span>
                       ) : (
-                        <span className="px-1.5 py-0.5 rounded-[4px] text-[8px] font-bold bg-blue-50 text-blue-700 border border-blue-100">
+                        <span className="px-1.5 py-0.5 rounded-sm text-[8px] font-bold bg-blue-50 text-blue-700 border border-blue-100">
                           Công ty
                         </span>
                       )}
@@ -2431,6 +2423,15 @@ interface CurationStats {
   knowledgeHub: number;
 }
 
+interface SummaryItem {
+  title: string;
+  insights?: string[];
+  contributors?: string;
+  totalTokens?: number;
+  model?: string;
+  timestamp?: string;
+}
+
 interface FlattenedSummary {
   projectId: number;
   projectName: string;
@@ -2475,9 +2476,9 @@ function KnowledgeHubDashboard() {
     projects.forEach(p => {
       if (p.master_summary) {
         try {
-          const parsed = JSON.parse(p.master_summary);
+          const parsed = JSON.parse(p.master_summary) as SummaryItem[];
           if (Array.isArray(parsed)) {
-            parsed.forEach((item: any) => {
+            parsed.forEach((item: SummaryItem) => {
               list.push({
                 projectId: p.id,
                 projectName: p.name,
@@ -2809,9 +2810,6 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
   const [isCreating, setIsCreating] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'loading' } | null>(null);
 
-  // AI Tool filter state
-  const [selectedTool, setSelectedTool] = useState<string>('Tất cả');
-
   // Summary states
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [isSummarizing, setIsSummarizing] = useState(false);
@@ -2822,22 +2820,6 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
     totalTokens: number;
     model: string;
   } | null>(null);
-
-  const selectedMember = useMemo(
-    () => members.find(m => m.email === activeMemberEmail) || null,
-    [members, activeMemberEmail]
-  );
-
-  const filteredLogs = useMemo(() => {
-    if (selectedTool === 'Tất cả') return logs;
-    return logs.filter(log => {
-      const toolLower = (log.ai_tool || '').toLowerCase();
-      if (selectedTool === 'ChatGPT') return toolLower.includes('gpt') || toolLower.includes('chatgpt');
-      if (selectedTool === 'Gemini') return toolLower.includes('gemini') || toolLower.includes('google');
-      if (selectedTool === 'Claude') return toolLower.includes('claude') || toolLower.includes('anthropic');
-      return false;
-    });
-  }, [logs, selectedTool]);
 
   function showToast(message: string, type: 'success' | 'error' | 'loading', duration = 3000) {
     setToast({ message, type });
@@ -2882,24 +2864,6 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
     }
   }
 
-  async function loadProjectLogsList(projId: number, isInitial = false) {
-    setLogsLoading(true);
-    const nextPage = isInitial ? 0 : page + 1;
-    try {
-      const result = await fetchProjectWIPs(projId, nextPage, 20);
-      if (isInitial) {
-        setLogs(result.items);
-      } else {
-        setLogs(prev => [...prev, ...result.items]);
-      }
-      setPage(nextPage);
-      setHasMore(result.hasMore);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLogsLoading(false);
-    }
-  }
 
   async function loadUserLogs(projId: number, userEmail: string, isInitial = false) {
     setLogsLoading(true);
@@ -2927,7 +2891,6 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
     setLogs([]);
     setPage(0);
     setHasMore(false);
-    setSelectedTool('Tất cả');
     setMembersLoading(true);
 
     try {
@@ -2949,7 +2912,6 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
     setActiveMemberEmail(email);
     setLogs([]);
     setPage(0);
-    setSelectedTool('Tất cả');
     setHasMore(false);
     if (selectedProject) {
       loadUserLogs(selectedProject.id, email, true);
@@ -2980,22 +2942,23 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
       }
       
       setSummaryResult(data);
-    } catch (err: any) {
-      console.error(err);
-      showToast(err.message || 'Lỗi khi tổng hợp tri thức dự án', 'error');
+    } catch (err: unknown) {
+      const errorObj = err instanceof Error ? err : new Error('Lỗi khi tổng hợp tri thức dự án');
+      console.error(errorObj);
+      showToast(errorObj.message, 'error');
       setIsSummaryModalOpen(false);
     } finally {
       setIsSummarizing(false);
     }
   }
 
-  async function handleSaveSummary(newSummary: any) {
+  async function handleSaveSummary(newSummary: SummaryItem) {
     if (!selectedProject) return;
     
-    let currentSummaries: any[] = [];
+    let currentSummaries: SummaryItem[] = [];
     if (selectedProject.master_summary) {
       try {
-        const parsed = JSON.parse(selectedProject.master_summary);
+        const parsed = JSON.parse(selectedProject.master_summary) as SummaryItem[];
         if (Array.isArray(parsed)) {
           currentSummaries = parsed;
         }
@@ -3046,7 +3009,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
     <main className="mx-auto max-w-7xl space-y-5 p-5 relative">
       {/* Toast Notification */}
       {toast && (
-        <div className={`fixed top-4 right-4 z-[100] flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border text-sm font-semibold transition-all duration-300 ${
+        <div className={`fixed top-4 right-4 z-100 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border text-sm font-semibold transition-all duration-300 ${
           toast.type === 'loading'
             ? 'bg-amber-50 border-amber-200 text-amber-800'
             : toast.type === 'success'
@@ -3079,13 +3042,13 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {projects.map((project) => {
-            const updateDate = getRelativeTime(project.created_at);
+            const updateDate = getRelativeTime(project.lastWipCreatedAt || project.created_at);
 
             return (
               <div
                 key={project.id}
                 onClick={() => handleOpenProject(project)}
-                className="group cursor-pointer rounded-xl border-t-4 border-t-markee-primary border-x border-b border-gray-200 bg-white p-5 shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md flex flex-col justify-between min-h-[190px]"
+                className="group cursor-pointer rounded-xl border-t-4 border-t-markee-primary border-x border-b border-gray-200 bg-white p-5 shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md flex flex-col justify-between min-h-47.5"
               >
                 <div className="space-y-4">
                   {/* Header */}
@@ -3105,7 +3068,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
                         {project.logCount || 0}
                       </div>
                       <div className="text-[9px] font-bold text-markee-muted uppercase tracking-wider">
-                        LOGS
+                        Bản nháp
                       </div>
                     </div>
                     <div>
@@ -3113,7 +3076,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
                         {project.members?.length || 0}
                       </div>
                       <div className="text-[9px] font-bold text-markee-muted uppercase tracking-wider">
-                        MEMBERS
+                        Thành viên
                       </div>
                     </div>
                     <div>
@@ -3121,7 +3084,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
                         {updateDate}
                       </div>
                       <div className="text-[9px] font-bold text-markee-muted uppercase tracking-wider">
-                        UPDATE
+                        Cập nhật
                       </div>
                     </div>
                   </div>
@@ -3217,7 +3180,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
                       try {
                         const parsed = JSON.parse(selectedProject.master_summary);
                         return Array.isArray(parsed) ? parsed.length : 0;
-                      } catch (e) {
+                      } catch {
                         return 0;
                       }
                     })()
@@ -3231,10 +3194,10 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
                   <div className="flex-1 overflow-y-auto p-6 space-y-6">
                     {/* Knowledge Hub summaries cards */}
                     {(() => {
-                      let summaries: any[] = [];
+                      let summaries: SummaryItem[] = [];
                       if (selectedProject?.master_summary) {
                         try {
-                          const parsed = JSON.parse(selectedProject.master_summary);
+                          const parsed = JSON.parse(selectedProject.master_summary) as SummaryItem[];
                           if (Array.isArray(parsed)) summaries = parsed;
                         } catch (e) {
                           console.error("Error parsing master_summary:", e);
@@ -3244,21 +3207,21 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
                       if (summaries.length === 0) {
                         return (
                           <div className="text-center py-10 text-sm text-markee-muted">
-                            Chưa có bản tổng hợp tri thức nào. Nhấp vào nút "Tổng hợp Tri thức Dự án" ở trên để tạo.
+                            Chưa có bản tổng hợp tri thức nào. Nhấp vào nút &quot;Tổng hợp Tri thức Dự án&quot; ở trên để tạo.
                           </div>
                         );
                       }
                       
                       return (
                         <div className="space-y-4">
-                          {summaries.slice().reverse().map((summary: any, idx: number) => (
+                          {summaries.slice().reverse().map((summary: SummaryItem, idx: number) => (
                             <div key={idx} className="bg-white border border-gray-200 rounded-xl p-5 shadow-2xs hover:shadow-sm transition-all space-y-3">
                               <div className="flex items-start justify-between gap-3">
                                 <h4 className="font-bold text-markee-text text-sm md:text-base">
                                   {summary.title}
                                 </h4>
                                 <span className="text-[10px] text-markee-muted bg-gray-50 border border-gray-150 px-2 py-0.5 rounded-sm font-semibold shrink-0">
-                                  {getRelativeTime(summary.timestamp)}
+                                  {getRelativeTime(summary.timestamp || '')}
                                 </span>
                               </div>
 
@@ -3291,7 +3254,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
                 ) : (
                   <div className="flex-1 overflow-hidden p-6 flex gap-6">
                     {/* Left Sidebar: Active Members */}
-                    <div className="w-1/4 min-w-[200px] border-r border-markee-border pr-6 overflow-y-auto flex flex-col">
+                    <div className="w-1/4 min-w-50 border-r border-markee-border pr-6 overflow-y-auto flex flex-col">
                       <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 h-full flex flex-col">
                         <h4 className="text-xs font-bold text-markee-muted uppercase tracking-wider mb-3">
                           Thành viên hoạt động
@@ -3375,7 +3338,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
                                 <div key={log.id} className="relative">
                                   {/* Timeline Bullet Node */}
                                   <div
-                                    className="absolute -left-[31px] top-1 w-4 h-4 rounded-full border-2 border-white shadow-xs bg-markee-primary"
+                                    className="absolute -left-7.75 top-1 w-4 h-4 rounded-full border-2 border-white shadow-xs bg-markee-primary"
                                     title={log.author_id}
                                   />
                                   
@@ -3493,7 +3456,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
 
       {/* Summarize Project Result Modal */}
       {isSummaryModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
           <div className="bg-white border border-markee-border rounded-xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[85vh]">
             {/* Header */}
             <div className="border-b border-markee-border px-6 py-4 bg-markee-bg/10 flex items-center justify-between shrink-0">

@@ -34,10 +34,10 @@ export default function UserGuideModal({ isOpen, onClose }: UserGuideModalProps)
       {/* Modal Container */}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="bg-white border border-markee-border rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-          <div className="bg-gradient-to-r from-markee-light/5 via-white to-white border-b border-markee-border px-6 py-4 flex items-center justify-between sticky top-0">
+          <div className="bg-linear-to-r from-markee-light/5 via-white to-white border-b border-markee-border px-6 py-4 flex items-center justify-between sticky top-0">
             <div className="flex items-center gap-3">
               <BookOpen className="w-6 h-6 text-markee-primary" />
-              <h2 className="text-xl font-bold bg-gradient-to-r from-slate-900 via-red-600 to-rose-600 bg-clip-text text-transparent">
+              <h2 className="text-xl font-bold bg-linear-to-r from-slate-900 via-red-600 to-rose-600 bg-clip-text text-transparent">
                 🚀 Cài đặt extention Markee AI Tracker
               </h2>
             </div>

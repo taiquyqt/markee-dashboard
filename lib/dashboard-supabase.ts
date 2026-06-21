@@ -492,6 +492,7 @@ export interface Project {
   members?: { email: string; name: string; avatarColor: string }[];
   master_summary?: string | null;
   last_summarized_at?: string | null;
+  lastWipCreatedAt?: string | null;
 }
 
 export interface AISession {
@@ -529,14 +530,18 @@ export async function fetchProjects(): Promise<Project[]> {
     return [];
   }
   
-  const { data: sessions, error: sessionsError } = await supabase.from("ai_sessions").select("project_id, author_id");
+  const { data: wips, error: wipsError } = await supabase
+    .from("skill_library")
+    .select("project_id, author_id, created_at")
+    .eq("skill_type", "wip");
   
   const projectCounts = new Map<number, number>();
   const projectMemberEmails = new Map<number, Set<string>>();
+  const projectLastWip = new Map<number, string>();
   const allMemberEmails = new Set<string>();
   
-  if (!sessionsError && sessions) {
-    sessions.forEach(s => {
+  if (!wipsError && wips) {
+    wips.forEach(s => {
       if (s.project_id) {
         projectCounts.set(s.project_id, (projectCounts.get(s.project_id) || 0) + 1);
         
@@ -546,6 +551,13 @@ export async function fetchProjects(): Promise<Project[]> {
           }
           projectMemberEmails.get(s.project_id)!.add(s.author_id);
           allMemberEmails.add(s.author_id);
+        }
+        
+        if (s.created_at) {
+          const currentLatest = projectLastWip.get(s.project_id);
+          if (!currentLatest || new Date(s.created_at) > new Date(currentLatest)) {
+            projectLastWip.set(s.project_id, s.created_at);
+          }
         }
       }
     });
@@ -590,7 +602,8 @@ export async function fetchProjects(): Promise<Project[]> {
       ...p,
       logCount: projectCounts.get(p.id) || 0,
       authorName: userMap.get(p.created_by)?.name || getEmailName(p.created_by),
-      members: membersList
+      members: membersList,
+      lastWipCreatedAt: projectLastWip.get(p.id) || null
     };
   });
 }
