@@ -32,6 +32,7 @@ export interface SkillLibraryRow {
   skill_type?: string | null;
   likes_count: number | null;
   downloads_count: number | null;
+  team_track?: string | null;
 }
 
 export interface SkillCard extends SkillLibraryRow {
@@ -74,7 +75,7 @@ export interface AdminOverviewMetrics {
   contributors: ContributorPoint[];
 }
 
-const DEFAULT_PAGE_SIZE = 12;
+const DEFAULT_PAGE_SIZE = 8;
 
 function getEmailName(email: string) {
   return email.split("@")[0] || email;
@@ -187,36 +188,71 @@ export async function getCurrentUserProfile(): Promise<UserProfile | null> {
   };
 }
 
-export async function fetchApprovedSkills(
-  page = 0,
-  pageSize = DEFAULT_PAGE_SIZE,
-  userEmail?: string,
-  searchTerm = "",
-  teamTrack = ""
-): Promise<PaginatedSkills> {
+export function removeVietnameseTones(str: string | null | undefined): string {
+  if (!str) return "";
+  return str
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D")
+    .toLowerCase();
+}
+
+export async function fetchApprovedSkills(page = 0, pageSize = DEFAULT_PAGE_SIZE, userEmail?: string, searchTerm = "", teamTrack = "", skillType = ""): Promise<PaginatedSkills> {
   const from = page * pageSize;
   const to = from + pageSize - 1;
 
-  let query = supabase
-    .from("skill_library")
-    .select("id, created_at, title, markdown_content, category, author_id, status, skill_type, likes_count, downloads_count", { count: "exact" })
-    .eq("status", "approved")
-    .eq("skill_type", "workflow");
+  let query = supabase.from("skill_library").select("id, created_at, title, markdown_content, category, author_id, status, skill_type, likes_count, downloads_count, team_track", { count: "exact" }).eq("status", "approved").not("skill_type", "ilike", "wip");
 
-  if (teamTrack) {
-    query = query.eq("team_track", teamTrack);
+  if (skillType && skillType !== "Tất cả") {
+    const dbType = skillType.toLowerCase();
+    if (dbType === "context pack") {
+      query = query.or("skill_type.ilike.context pack,skill_type.ilike.context_pack");
+    } else {
+      query = query.ilike("skill_type", dbType);
+    }
+  }
+
+  if (teamTrack && teamTrack !== "Tất cả") {
+    if (teamTrack === "Khác") {
+      query = query.or('team_track.is.null,team_track.eq.,team_track.not.in.("Track 1: SI Delivery","Track 2: Marketing","Track 3: Dev + DevOps","Track 4: AI Team","Track 5: Sales")');
+    } else {
+      query = query.eq("team_track", teamTrack);
+    }
   }
 
   const normalizedSearch = searchTerm.trim();
 
-  if (normalizedSearch) {
-    query = query.or(`title.ilike.%${normalizedSearch}%,category.ilike.%${normalizedSearch}%,author_id.ilike.%${normalizedSearch}%`);
+  // If there's no search term, use fast server-side range query
+  if (!normalizedSearch) {
+    const { data, error, count } = await query.order("created_at", { ascending: false }).range(from, to);
+
+    if (error) {
+      console.error("Error fetching approved skills:", error);
+      return { items: [], total: 0, hasMore: false, nextPage: page };
+    }
+
+    const rows = (data || []) as SkillLibraryRow[];
+    const authorMap = await getAuthorNameMap(rows.map((skill) => skill.author_id));
+    const likedSkillIds = await getLikedSkillIds(
+      userEmail,
+      rows.map((skill) => skill.id),
+    );
+    const total = count || 0;
+
+    return {
+      items: rows.map((row) => normalizeSkill(row, authorMap, likedSkillIds)),
+      total,
+      hasMore: to + 1 < total,
+      nextPage: page + 1,
+    };
   }
 
-  const { data, error, count } = await query.order("created_at", { ascending: false }).range(from, to);
+  // If there is a search term, retrieve all matching candidates to filter in memory diacritics-insensitively
+  const { data, error } = await query.order("created_at", { ascending: false });
 
   if (error) {
-    console.error("Error fetching approved skills:", error);
+    console.error("Error fetching approved skills for search:", error);
     return { items: [], total: 0, hasMore: false, nextPage: page };
   }
 
@@ -226,10 +262,22 @@ export async function fetchApprovedSkills(
     userEmail,
     rows.map((skill) => skill.id),
   );
-  const total = count || 0;
+
+  const normalizedItems = rows.map((row) => normalizeSkill(row, authorMap, likedSkillIds));
+  const cleanSearch = removeVietnameseTones(normalizedSearch);
+
+  const filteredItems = normalizedItems.filter((item) => {
+    const cleanTitle = removeVietnameseTones(item.title);
+    const cleanCategory = removeVietnameseTones(item.category);
+    const cleanAuthor = removeVietnameseTones(item.authorName);
+    return cleanTitle.includes(cleanSearch) || cleanCategory.includes(cleanSearch) || cleanAuthor.includes(cleanSearch);
+  });
+
+  const slicedItems = filteredItems.slice(from, to + 1);
+  const total = filteredItems.length;
 
   return {
-    items: rows.map((row) => normalizeSkill(row, authorMap, likedSkillIds)),
+    items: slicedItems,
     total,
     hasMore: to + 1 < total,
     nextPage: page + 1,
@@ -264,11 +312,7 @@ export async function fetchTrendingSkills(limit = 5, userEmail?: string): Promis
 }
 
 export async function fetchTeamTracks(): Promise<string[]> {
-  const { data, error } = await supabase
-    .from("skill_library")
-    .select("team_track")
-    .eq("status", "approved")
-    .eq("skill_type", "workflow");
+  const { data, error } = await supabase.from("skill_library").select("team_track").eq("status", "approved").eq("skill_type", "workflow");
 
   if (error) {
     console.error("Error fetching team tracks:", error);
@@ -280,7 +324,7 @@ export async function fetchTeamTracks(): Promise<string[]> {
 }
 
 export async function fetchMyWorkspaceSkills(email: string): Promise<SkillCard[]> {
-  const { data, error } = await supabase.from("skill_library").select("id, created_at, title, markdown_content, category, author_id, status, skill_type, likes_count, downloads_count").eq("author_id", email).order("created_at", { ascending: false });
+  const { data, error } = await supabase.from("skill_library").select("id, created_at, title, markdown_content, category, author_id, status, skill_type, likes_count, downloads_count, team_track").eq("author_id", email).not("skill_type", "ilike", "wip").order("created_at", { ascending: false });
 
   if (error) {
     console.error("Error fetching workspace skills:", error);
@@ -294,6 +338,57 @@ export async function fetchMyWorkspaceSkills(email: string): Promise<SkillCard[]
     rows.map((skill) => skill.id),
   );
   return rows.map((row) => normalizeSkill(row, authorMap, likedSkillIds));
+}
+
+export interface LibraryCounts {
+  byType: Record<string, number>;
+  byTrack: Record<string, number>;
+  total: number;
+}
+
+export async function fetchLibraryCounts(userEmail?: string): Promise<LibraryCounts> {
+  let query = supabase.from("skill_library").select("skill_type, team_track").eq("status", "approved").not("skill_type", "ilike", "wip");
+
+  if (userEmail) {
+    query = query.eq("author_id", userEmail);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("Error fetching library counts:", error);
+    return { byType: {}, byTrack: {}, total: 0 };
+  }
+
+  const byType: Record<string, number> = {};
+  const byTrack: Record<string, number> = {};
+  let total = 0;
+
+  const knownTracks = ["Track 1: SI Delivery", "Track 2: Marketing", "Track 3: Dev + DevOps", "Track 4: AI Team", "Track 5: Sales"];
+  let trackSum = 0;
+
+  (data || []).forEach((row) => {
+    total++;
+
+    // Normalize skill_type
+    const rawType = row.skill_type || "";
+    let typeKey = rawType.toLowerCase();
+    if (typeKey === "context_pack" || typeKey === "context pack") typeKey = "context pack"; // Keep UI key
+    if (typeKey) {
+      byType[typeKey] = (byType[typeKey] || 0) + 1;
+    }
+
+    // Normalize team_track
+    const track = (row.team_track || "").trim();
+    if (track && knownTracks.includes(track)) {
+      byTrack[track] = (byTrack[track] || 0) + 1;
+      trackSum += 1;
+    }
+  });
+
+  byTrack["Khác"] = total - trackSum;
+
+  return { byType, byTrack, total };
 }
 
 export async function toggleSkillVote(skillId: number, userEmail: string) {
@@ -410,9 +505,9 @@ function formatChartDate(value: string) {
 
 function formatToolName(name: string): string {
   const lower = name.toLowerCase().trim();
-  if (lower === 'chatgpt') return 'ChatGPT';
-  if (lower === 'claude') return 'Claude';
-  if (lower === 'gemini') return 'Gemini';
+  if (lower === "chatgpt") return "ChatGPT";
+  if (lower === "claude") return "Claude";
+  if (lower === "gemini") return "Gemini";
   return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
@@ -529,22 +624,19 @@ export async function fetchProjects(): Promise<Project[]> {
     console.error("Error fetching projects:", projectsError);
     return [];
   }
-  
-  const { data: wips, error: wipsError } = await supabase
-    .from("skill_library")
-    .select("project_id, author_id, created_at")
-    .eq("skill_type", "wip");
-  
+
+  const { data: wips, error: wipsError } = await supabase.from("skill_library").select("project_id, author_id, created_at").eq("skill_type", "wip");
+
   const projectCounts = new Map<number, number>();
   const projectMemberEmails = new Map<number, Set<string>>();
   const projectLastWip = new Map<number, string>();
   const allMemberEmails = new Set<string>();
-  
+
   if (!wipsError && wips) {
-    wips.forEach(s => {
+    wips.forEach((s) => {
       if (s.project_id) {
         projectCounts.set(s.project_id, (projectCounts.get(s.project_id) || 0) + 1);
-        
+
         if (s.author_id) {
           if (!projectMemberEmails.has(s.project_id)) {
             projectMemberEmails.set(s.project_id, new Set());
@@ -552,7 +644,7 @@ export async function fetchProjects(): Promise<Project[]> {
           projectMemberEmails.get(s.project_id)!.add(s.author_id);
           allMemberEmails.add(s.author_id);
         }
-        
+
         if (s.created_at) {
           const currentLatest = projectLastWip.get(s.project_id);
           if (!currentLatest || new Date(s.created_at) > new Date(currentLatest)) {
@@ -562,66 +654,54 @@ export async function fetchProjects(): Promise<Project[]> {
       }
     });
   }
-  
-  projectsData.forEach(p => {
+
+  projectsData.forEach((p) => {
     if (p.created_by) {
       allMemberEmails.add(p.created_by);
     }
   });
-  
+
   const emailsArray = Array.from(allMemberEmails);
   const userMap = new Map<string, { name: string; avatarColor: string }>();
   if (emailsArray.length > 0) {
-    const { data: userData } = await supabase
-      .from("users")
-      .select("email, full_name, avatar_color")
-      .in("email", emailsArray);
-      
-    userData?.forEach(u => {
+    const { data: userData } = await supabase.from("users").select("email, full_name, avatar_color").in("email", emailsArray);
+
+    userData?.forEach((u) => {
       if (u.email) {
         userMap.set(u.email, {
           name: u.full_name || getEmailName(u.email),
-          avatarColor: u.avatar_color || "#E3000F"
+          avatarColor: u.avatar_color || "#E3000F",
         });
       }
     });
   }
-  
-  return projectsData.map(p => {
+
+  return projectsData.map((p) => {
     const emailsSet = projectMemberEmails.get(p.id) || new Set<string>();
-    const membersList = Array.from(emailsSet).map(email => {
+    const membersList = Array.from(emailsSet).map((email) => {
       const u = userMap.get(email);
       return {
         email,
         name: u?.name || getEmailName(email),
-        avatarColor: u?.avatarColor || "#E3000F"
+        avatarColor: u?.avatarColor || "#E3000F",
       };
     });
-    
+
     return {
       ...p,
       logCount: projectCounts.get(p.id) || 0,
       authorName: userMap.get(p.created_by)?.name || getEmailName(p.created_by),
       members: membersList,
-      lastWipCreatedAt: projectLastWip.get(p.id) || null
+      lastWipCreatedAt: projectLastWip.get(p.id) || null,
     };
   });
 }
 
-export async function fetchProjectSessions(
-  projectId: number,
-  page = 0,
-  pageSize = 20
-): Promise<{ items: AISession[]; total: number; hasMore: boolean }> {
+export async function fetchProjectSessions(projectId: number, page = 0, pageSize = 20): Promise<{ items: AISession[]; total: number; hasMore: boolean }> {
   const from = page * pageSize;
   const to = from + pageSize - 1;
 
-  const { data, error, count } = await supabase
-    .from("ai_sessions")
-    .select("*", { count: "exact" })
-    .eq("project_id", projectId)
-    .order("created_at", { ascending: false })
-    .range(from, to);
+  const { data, error, count } = await supabase.from("ai_sessions").select("*", { count: "exact" }).eq("project_id", projectId).order("created_at", { ascending: false }).range(from, to);
 
   if (error) {
     console.error("Error fetching project sessions:", error);
@@ -630,18 +710,15 @@ export async function fetchProjectSessions(
 
   const rows = (data || []) as AISession[];
   const authorEmails = rows.map((s) => s.author_id);
-  
-  const { data: userData } = await supabase
-    .from("users")
-    .select("email, full_name, avatar_color")
-    .in("email", authorEmails);
-    
+
+  const { data: userData } = await supabase.from("users").select("email, full_name, avatar_color").in("email", authorEmails);
+
   const userMap = new Map<string, { name: string; avatarColor: string }>();
   userData?.forEach((u) => {
     if (u.email) {
       userMap.set(u.email, {
         name: u.full_name || getEmailName(u.email),
-        avatarColor: u.avatar_color || "#E3000F"
+        avatarColor: u.avatar_color || "#E3000F",
       });
     }
   });
@@ -651,7 +728,7 @@ export async function fetchProjectSessions(
     return {
       ...row,
       authorName: u?.name || getEmailName(row.author_id),
-      avatarColor: u?.avatarColor || "#E3000F"
+      avatarColor: u?.avatarColor || "#E3000F",
     };
   });
 
@@ -660,62 +737,45 @@ export async function fetchProjectSessions(
   return {
     items,
     total,
-    hasMore: to + 1 < total
+    hasMore: to + 1 < total,
   };
 }
 
 export async function fetchProjectMembers(projectId: number): Promise<{ email: string; name: string; avatarColor: string }[]> {
-  const { data, error } = await supabase
-    .from("ai_sessions")
-    .select("author_id")
-    .eq("project_id", projectId);
-    
+  const { data, error } = await supabase.from("ai_sessions").select("author_id").eq("project_id", projectId);
+
   if (error || !data) return [];
-  
-  const emails = Array.from(new Set(data.map(d => d.author_id).filter(Boolean)));
+
+  const emails = Array.from(new Set(data.map((d) => d.author_id).filter(Boolean)));
   if (emails.length === 0) return [];
-  
-  const { data: userData } = await supabase
-    .from("users")
-    .select("email, full_name, avatar_color")
-    .in("email", emails);
-    
+
+  const { data: userData } = await supabase.from("users").select("email, full_name, avatar_color").in("email", emails);
+
   const userMap = new Map<string, { name: string; avatarColor: string }>();
-  userData?.forEach(u => {
+  userData?.forEach((u) => {
     if (u.email) {
       userMap.set(u.email, {
         name: u.full_name || getEmailName(u.email),
-        avatarColor: u.avatar_color || "#E3000F"
+        avatarColor: u.avatar_color || "#E3000F",
       });
     }
   });
-  
-  return emails.map(email => {
+
+  return emails.map((email) => {
     const u = userMap.get(email);
     return {
       email,
       name: u?.name || getEmailName(email),
-      avatarColor: u?.avatarColor || "#E3000F"
+      avatarColor: u?.avatarColor || "#E3000F",
     };
   });
 }
 
-export async function fetchProjectSessionsForUser(
-  projectId: number,
-  authorId: string,
-  page = 0,
-  pageSize = 20
-): Promise<{ items: AISession[]; total: number; hasMore: boolean }> {
+export async function fetchProjectSessionsForUser(projectId: number, authorId: string, page = 0, pageSize = 20): Promise<{ items: AISession[]; total: number; hasMore: boolean }> {
   const from = page * pageSize;
   const to = from + pageSize - 1;
 
-  const { data, error, count } = await supabase
-    .from("ai_sessions")
-    .select("*", { count: "exact" })
-    .eq("project_id", projectId)
-    .eq("author_id", authorId)
-    .order("created_at", { ascending: false })
-    .range(from, to);
+  const { data, error, count } = await supabase.from("ai_sessions").select("*", { count: "exact" }).eq("project_id", projectId).eq("author_id", authorId).order("created_at", { ascending: false }).range(from, to);
 
   if (error) {
     console.error("Error fetching project sessions for user:", error);
@@ -724,18 +784,15 @@ export async function fetchProjectSessionsForUser(
 
   const rows = (data || []) as AISession[];
   const authorEmails = rows.map((s) => s.author_id);
-  
-  const { data: userData } = await supabase
-    .from("users")
-    .select("email, full_name, avatar_color")
-    .in("email", authorEmails);
-    
+
+  const { data: userData } = await supabase.from("users").select("email, full_name, avatar_color").in("email", authorEmails);
+
   const userMap = new Map<string, { name: string; avatarColor: string }>();
   userData?.forEach((u) => {
     if (u.email) {
       userMap.set(u.email, {
         name: u.full_name || getEmailName(u.email),
-        avatarColor: u.avatar_color || "#E3000F"
+        avatarColor: u.avatar_color || "#E3000F",
       });
     }
   });
@@ -745,7 +802,7 @@ export async function fetchProjectSessionsForUser(
     return {
       ...row,
       authorName: u?.name || getEmailName(row.author_id),
-      avatarColor: u?.avatarColor || "#E3000F"
+      avatarColor: u?.avatarColor || "#E3000F",
     };
   });
 
@@ -754,16 +811,12 @@ export async function fetchProjectSessionsForUser(
   return {
     items,
     total,
-    hasMore: to + 1 < total
+    hasMore: to + 1 < total,
   };
 }
 
 export async function createNewProject(name: string, userEmail: string): Promise<Project> {
-  const { data, error } = await supabase
-    .from("projects")
-    .insert({ name, created_by: userEmail })
-    .select("*")
-    .single();
+  const { data, error } = await supabase.from("projects").insert({ name, created_by: userEmail }).select("*").single();
 
   if (error) throw error;
   return data as Project;
@@ -809,17 +862,10 @@ export async function fetchAIUsageStats(): Promise<AIUsageStat[]> {
   return data || [];
 }
 
-export async function createAILicense(license: {
-  email: string;
-  ai_tool: string;
-  plan_name: string;
-  monthly_cost: number;
-  expiration_date: string;
-  status?: string;
-}): Promise<AILicense> {
+export async function createAILicense(license: { email: string; ai_tool: string; plan_name: string; monthly_cost: number; expiration_date: string; status?: string }): Promise<AILicense> {
   const payload = {
     ...license,
-    status: license.status || 'Active'
+    status: license.status || "Active",
   };
   const { data, error } = await supabase.from("ai_licenses").insert(payload).select("*").single();
   if (error) throw error;
@@ -829,9 +875,9 @@ export async function createAILicense(license: {
 export async function renewAILicense(id: number, newExpirationDate: string): Promise<AILicense> {
   const { data, error } = await supabase
     .from("ai_licenses")
-    .update({ 
+    .update({
       expiration_date: newExpirationDate,
-      status: 'Active'
+      status: "Active",
     })
     .eq("id", id)
     .select("*")
@@ -840,20 +886,23 @@ export async function renewAILicense(id: number, newExpirationDate: string): Pro
   return data;
 }
 
-export async function updateAILicense(id: number, updates: {
-  ai_tool: string;
-  plan_name: string;
-  monthly_cost: number;
-  expiration_date: string;
-  status?: string | null;
-}): Promise<AILicense> {
+export async function updateAILicense(
+  id: number,
+  updates: {
+    ai_tool: string;
+    plan_name: string;
+    monthly_cost: number;
+    expiration_date: string;
+    status?: string | null;
+  },
+): Promise<AILicense> {
   // If the expiration date is set to a future date, set status to Active
-  const status = new Date(updates.expiration_date) >= new Date() ? 'Active' : (updates.status || 'Active');
+  const status = new Date(updates.expiration_date) >= new Date() ? "Active" : updates.status || "Active";
   const { data, error } = await supabase
     .from("ai_licenses")
     .update({
       ...updates,
-      status
+      status,
     })
     .eq("id", id)
     .select("*")
@@ -863,12 +912,7 @@ export async function updateAILicense(id: number, updates: {
 }
 
 export async function cancelAILicense(id: number): Promise<AILicense> {
-  const { data, error } = await supabase
-    .from("ai_licenses")
-    .update({ status: 'Canceled' })
-    .eq("id", id)
-    .select("*")
-    .single();
+  const { data, error } = await supabase.from("ai_licenses").update({ status: "Canceled" }).eq("id", id).select("*").single();
   if (error) throw error;
   return data;
 }
@@ -896,166 +940,130 @@ export async function updateProjectSummary(projectId: number, summaryJson: strin
     .from("projects")
     .update({
       master_summary: summaryJson,
-      last_summarized_at: new Date().toISOString()
+      last_summarized_at: new Date().toISOString(),
     })
     .eq("id", projectId);
   if (error) throw error;
 }
 
 export async function fetchCurationStats(): Promise<{ rawSessions: number; wipDrafts: number; knowledgeHub: number }> {
-  const { count: sessionCount } = await supabase
-    .from('ai_sessions')
-    .select('*', { count: 'exact', head: true });
-    
-  const { count: wipCount } = await supabase
-    .from('skill_library')
-    .select('*', { count: 'exact', head: true })
-    .eq('skill_type', 'wip');
-    
-  const { data: projects } = await supabase
-    .from('projects')
-    .select('master_summary');
-    
+  const { count: sessionCount } = await supabase.from("ai_sessions").select("*", { count: "exact", head: true });
+
+  const { count: wipCount } = await supabase.from("skill_library").select("*", { count: "exact", head: true }).eq("skill_type", "wip");
+
+  const { data: projects } = await supabase.from("projects").select("master_summary");
+
   let summaryCount = 0;
   if (projects) {
-    projects.forEach(p => {
+    projects.forEach((p) => {
       if (p.master_summary) {
         try {
           const parsed = JSON.parse(p.master_summary);
           if (Array.isArray(parsed)) {
             summaryCount += parsed.length;
           }
-        } catch (e) {
+        } catch {
           // ignore
         }
       }
     });
   }
-  
+
   return {
     rawSessions: sessionCount || 0,
     wipDrafts: wipCount || 0,
-    knowledgeHub: summaryCount
+    knowledgeHub: summaryCount,
   };
 }
 
 export async function fetchProjectWIPMembers(projectId: number): Promise<{ email: string; name: string; avatarColor: string }[]> {
-  const { data, error } = await supabase
-    .from("skill_library")
-    .select("author_id")
-    .eq("project_id", projectId)
-    .eq("skill_type", "wip");
-    
+  const { data, error } = await supabase.from("skill_library").select("author_id").eq("project_id", projectId).eq("skill_type", "wip");
+
   if (error || !data) return [];
-  
-  const emails = Array.from(new Set(data.map(d => d.author_id).filter(Boolean)));
+
+  const emails = Array.from(new Set(data.map((d) => d.author_id).filter(Boolean)));
   if (emails.length === 0) return [];
-  
-  const { data: userData } = await supabase
-    .from("users")
-    .select("email, full_name, avatar_color")
-    .in("email", emails);
-    
+
+  const { data: userData } = await supabase.from("users").select("email, full_name, avatar_color").in("email", emails);
+
   const userMap = new Map<string, { name: string; avatarColor: string }>();
-  userData?.forEach(u => {
+  userData?.forEach((u) => {
     if (u.email) {
       userMap.set(u.email, {
-        name: u.full_name || u.email.split('@')[0],
-        avatarColor: u.avatar_color || "#E3000F"
+        name: u.full_name || u.email.split("@")[0],
+        avatarColor: u.avatar_color || "#E3000F",
       });
     }
   });
-  
-  return emails.map(email => {
+
+  return emails.map((email) => {
     const u = userMap.get(email);
     return {
       email,
-      name: u?.name || email.split('@')[0],
-      avatarColor: u?.avatarColor || "#E3000F"
+      name: u?.name || email.split("@")[0],
+      avatarColor: u?.avatarColor || "#E3000F",
     };
   });
 }
 
-export async function fetchProjectWIPsForUser(
-  projectId: number,
-  authorId: string,
-  page = 0,
-  pageSize = 20
-): Promise<{ items: AISession[]; total: number; hasMore: boolean }> {
+export async function fetchProjectWIPsForUser(projectId: number, authorId: string, page = 0, pageSize = 20): Promise<{ items: AISession[]; total: number; hasMore: boolean }> {
   const from = page * pageSize;
   const to = from + pageSize - 1;
 
-  const { data, error, count } = await supabase
-    .from("skill_library")
-    .select("*", { count: "exact" })
-    .eq("project_id", projectId)
-    .eq("skill_type", "wip")
-    .eq("author_id", authorId)
-    .order("created_at", { ascending: false })
-    .range(from, to);
+  const { data, error, count } = await supabase.from("skill_library").select("*", { count: "exact" }).eq("project_id", projectId).eq("skill_type", "wip").eq("author_id", authorId).order("created_at", { ascending: false }).range(from, to);
 
   if (error) {
     console.error("Error fetching project WIPs for user:", error);
     return { items: [], total: 0, hasMore: false };
   }
 
-  const items: AISession[] = (data || []).map(row => ({
+  const items: AISession[] = (data || []).map((row) => ({
     id: row.id,
     created_at: row.created_at,
-    ai_tool: row.category || 'WIP Draft',
-    task_type: 'WIP',
+    ai_tool: row.category || "WIP Draft",
+    task_type: "WIP",
     prompt_content: row.markdown_content,
     tokens_used: row.session_tokens || 0,
     author_id: row.author_id,
     project_id: row.project_id,
-    tier: 'WIP'
+    tier: "WIP",
   }));
 
   const total = count || 0;
   return {
     items,
     total,
-    hasMore: to + 1 < total
+    hasMore: to + 1 < total,
   };
 }
 
-export async function fetchProjectWIPs(
-  projectId: number,
-  page = 0,
-  pageSize = 20
-): Promise<{ items: AISession[]; total: number; hasMore: boolean }> {
+export async function fetchProjectWIPs(projectId: number, page = 0, pageSize = 20): Promise<{ items: AISession[]; total: number; hasMore: boolean }> {
   const from = page * pageSize;
   const to = from + pageSize - 1;
 
-  const { data, error, count } = await supabase
-    .from("skill_library")
-    .select("*", { count: "exact" })
-    .eq("project_id", projectId)
-    .eq("skill_type", "wip")
-    .order("created_at", { ascending: false })
-    .range(from, to);
+  const { data, error, count } = await supabase.from("skill_library").select("*", { count: "exact" }).eq("project_id", projectId).eq("skill_type", "wip").order("created_at", { ascending: false }).range(from, to);
 
   if (error) {
     console.error("Error fetching project WIPs:", error);
     return { items: [], total: 0, hasMore: false };
   }
 
-  const items: AISession[] = (data || []).map(row => ({
+  const items: AISession[] = (data || []).map((row) => ({
     id: row.id,
     created_at: row.created_at,
-    ai_tool: row.category || 'WIP Draft',
-    task_type: 'WIP',
+    ai_tool: row.category || "WIP Draft",
+    task_type: "WIP",
     prompt_content: row.markdown_content,
     tokens_used: row.session_tokens || 0,
     author_id: row.author_id,
     project_id: row.project_id,
-    tier: 'WIP'
+    tier: "WIP",
   }));
 
   const total = count || 0;
   return {
     items,
     total,
-    hasMore: to + 1 < total
+    hasMore: to + 1 < total,
   };
 }

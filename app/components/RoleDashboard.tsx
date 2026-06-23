@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { ChevronLeft, ChevronRight, Download, Medal, Search, ThumbsUp, BookOpen } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Download, Medal, Search, ThumbsUp, BookOpen, Plus, X, Folder, User } from 'lucide-react';
 import {
   Area,
   AreaChart,
@@ -28,6 +28,9 @@ import {
   downloadSkillMarkdown,
   fetchAdminOverviewMetrics,
   fetchApprovedSkills,
+  fetchLibraryCounts,
+  removeVietnameseTones,
+  type LibraryCounts,
   fetchMyWorkspaceSkills,
   fetchPendingSkills,
   fetchTrendingSkills,
@@ -67,7 +70,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import UserGuideModal from './UserGuideModal';
 
-const PAGE_SIZE = 9;
+const PAGE_SIZE = 6;
 const TOOL_COLORS = ['#E3000F', '#FF3344', '#f59e0b', '#a855f7', '#059669', '#0d9488'];
 
 function formatNumber(value: number) {
@@ -232,40 +235,28 @@ function ConfirmationModal({
   );
 }
 
+function getSkillTrackName(skill: SkillCard): string {
+  return skill.team_track || 'Khác';
+}
+
 function SkillCardItem({
   skill,
   userEmail,
   showStatus = false,
   allowVoting = true,
+  onPreview,
 }: {
   skill: SkillCard;
   userEmail: string;
   showStatus?: boolean;
   allowVoting?: boolean;
+  onPreview: () => void;
 }) {
   const [likes, setLikes] = useState(skill.likes_count || 0);
   const [downloads, setDownloads] = useState(skill.downloads_count || 0);
   const [liked, setLiked] = useState(Boolean(skill.likedByCurrentUser));
   const [busyAction, setBusyAction] = useState<'vote' | 'download' | null>(null);
   const summary = stripMarkdown(skill.markdown_content || '');
-
-  async function handleVote() {
-    setBusyAction('vote');
-    const nextLiked = !liked;
-    setLiked(nextLiked);
-    setLikes((value) => Math.max(0, value + (nextLiked ? 1 : -1)));
-
-    try {
-      const result = await toggleSkillVote(skill.id, userEmail);
-      setLiked(result.liked);
-    } catch (error) {
-      setLiked(liked);
-      setLikes((value) => Math.max(0, value + (nextLiked ? -1 : 1)));
-      console.error('Error voting skill:', error);
-    } finally {
-      setBusyAction(null);
-    }
-  }
 
   async function handleDownload() {
     setBusyAction('download');
@@ -281,51 +272,73 @@ function SkillCardItem({
     }
   }
 
+  const rawType = skill.skill_type || 'Workflow';
+  const typeName = rawType === 'context_pack' ? 'Context Pack' : rawType.charAt(0).toUpperCase() + rawType.slice(1);
+  const trackName = getSkillTrackName(skill);
+
   return (
-    <article className="rounded-xl border border-markee-border bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-markee-primary hover:shadow-md">
-      <div className="mb-4 flex justify-between items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <h3 className="line-clamp-2 text-base font-semibold leading-6 text-markee-text">{skill.title}</h3>
-          <p className="mt-1 text-xs text-markee-sub">
-            {skill.category || 'Kỹ năng'} · {skill.authorName}
+    <article className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md flex flex-col justify-between h-full min-h-[220px]">
+      <div>
+        {/* Header */}
+        <div className="flex justify-between items-start gap-3">
+          <div className="flex flex-wrap gap-1.5">
+            <span className="bg-purple-50 text-purple-700 border border-purple-100 px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase">
+              {typeName}
+            </span>
+            <span className="bg-green-50 text-green-700 border border-green-100 px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide uppercase">
+              {showStatus ? skill.status : 'APPROVED'}
+            </span>
+          </div>
+        </div>
+
+        {/* Title & Body */}
+        <div className="mt-3.5">
+          <h3
+            onClick={onPreview}
+            className="font-bold text-base text-gray-900 line-clamp-1 hover:text-markee-primary transition-colors cursor-pointer"
+          >
+            {skill.title}
+          </h3>
+          <p className="text-gray-500 text-xs mt-1.5 line-clamp-2 leading-relaxed min-h-[2.5rem]">
+            {summary || 'Chưa có mô tả nội dung.'}
           </p>
         </div>
-        {showStatus && <StatusPill status={skill.status} />}
       </div>
 
-      <p className="mb-5 min-h-12 text-sm leading-6 text-markee-muted">{summary || 'Chưa có mô tả nội dung.'}</p>
-
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-xs text-markee-sub">
-          <span>{likes} tim</span>
-          <span>·</span>
-          <span>{downloads} tải</span>
+      {/* Footer */}
+      <div className="mt-5 pt-4 border-t border-gray-100 flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11px] text-gray-400">
+          <div className="flex items-center gap-1">
+            <Folder className="h-3 w-3 text-gray-400" />
+            <span className="font-medium text-gray-500">{trackName}</span>
+          </div>
+          <span className="text-gray-300">•</span>
+          <div className="flex items-center gap-1">
+            <User className="h-3 w-3 text-gray-400" />
+            <span className="text-gray-500 truncate max-w-[100px]">{skill.authorName}</span>
+          </div>
+          <span className="text-gray-300">•</span>
+          <span className="font-mono text-gray-400">v1.0.0</span>
         </div>
-        <div className="flex gap-2">
-          {allowVoting && (
-            <button
-              type="button"
-              onClick={handleVote}
-              disabled={busyAction !== null}
-              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs transition-colors disabled:opacity-60 ${
-                liked
-                  ? 'bg-red-50 border-markee-primary text-markee-primary font-medium'
-                  : 'bg-white border-gray-300 text-gray-500 hover:border-markee-primary hover:text-markee-primary'
-              }`}
-            >
-              <ThumbsUp className="h-3.5 w-3.5" fill={liked ? 'currentColor' : 'none'} />
-              Hữu ích
-            </button>
-          )}
+
+        <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            onClick={handleDownload}
-            disabled={busyAction !== null}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-markee-primary px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-markee-hover disabled:opacity-60"
+            onClick={onPreview}
+            className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 transition-colors cursor-pointer"
           >
-            <Download className="h-3.5 w-3.5" />
-            Tải về
+            Preview
           </button>
+          {skill.status !== 'pending' && (
+            <button
+              type="button"
+              onClick={handleDownload}
+              disabled={busyAction !== null}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-lg bg-markee-primary px-3.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-markee-hover disabled:opacity-60 cursor-pointer"
+            >
+              Tải xuống
+            </button>
+          )}
         </div>
       </div>
     </article>
@@ -381,7 +394,7 @@ function PaginationControls({
         Trang trước
       </button>
       <div className="rounded-xl border border-markee-border bg-markee-bg px-4 py-2 text-xs font-semibold text-markee-muted">
-        Trang {page + 1} trên {totalPages}
+         {page + 1} / {totalPages}
       </div>
       <button
         type="button"
@@ -394,6 +407,12 @@ function PaginationControls({
       </button>
     </div>
   );
+}
+
+function mapTrackToDbValue(track: string): string {
+  if (track === "Tất cả") return "";
+  const match = track.match(/(Track \d+:[^(]+)/);
+  return match ? match[1].trim() : track;
 }
 
 function UserDashboard({
@@ -417,8 +436,24 @@ function UserDashboard({
 
   const [workspaceTab, setWorkspaceTab] = useState<'approved' | 'pending'>('approved');
 
-  const [selectedTrack, setSelectedTrack] = useState('');
-  const [tracks, setTracks] = useState<string[]>([]);
+  const [selectedTrack, setSelectedTrack] = useState('Tất cả');
+  const [selectedType, setSelectedType] = useState('Tất cả');
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [previewSkill, setPreviewSkill] = useState<SkillCard | null>(null);
+
+  const [uploadType, setUploadType] = useState('Prompt');
+  const [uploadTitle, setUploadTitle] = useState('');
+  const [uploadProject, setUploadProject] = useState('');
+  const [uploadContent, setUploadContent] = useState('');
+
+  const [counts, setCounts] = useState<LibraryCounts>({ byType: {}, byTrack: {}, total: 0 });
+
+  const handleUploadSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsUploadModalOpen(false);
+    setUploadTitle('');
+    setUploadContent('');
+  };
 
   const approvedWorkspaceSkills = useMemo(() => {
     return workspaceSkills.filter((skill) => skill.status === 'approved');
@@ -432,42 +467,39 @@ function UserDashboard({
     setLoading(true);
 
     try {
+      const dbTrack = mapTrackToDbValue(selectedTrack);
+      const isWorkspace = !isLibraryOnly && activeView === 'workspace';
+      const countsPromise = fetchLibraryCounts(isWorkspace ? profile.email : undefined);
+
       if (isLibraryOnly) {
-        const skills = await fetchApprovedSkills(page, PAGE_SIZE, profile.email, debouncedSearchTerm, selectedTrack);
+        const [skills, libCounts] = await Promise.all([
+          fetchApprovedSkills(page, PAGE_SIZE, profile.email, debouncedSearchTerm, dbTrack, selectedType),
+          countsPromise,
+        ]);
         setLibrary(skills);
+        setCounts(libCounts);
         return;
       }
 
-      const [skills, trending, workspace] = await Promise.all([
-        fetchApprovedSkills(page, PAGE_SIZE, profile.email, debouncedSearchTerm, selectedTrack),
+      const [skills, trending, workspace, libCounts] = await Promise.all([
+        fetchApprovedSkills(page, PAGE_SIZE, profile.email, debouncedSearchTerm, dbTrack, selectedType),
         fetchTrendingSkills(5, profile.email),
         fetchMyWorkspaceSkills(profile.email),
+        countsPromise,
       ]);
 
       setLibrary(skills);
       setTrendingSkills(trending);
       setWorkspaceSkills(workspace);
+      setCounts(libCounts);
     } finally {
       setLoading(false);
     }
   }
 
-  async function loadTracks() {
-    try {
-      const data = await fetchTeamTracks();
-      setTracks(data);
-    } catch (err) {
-      console.error(err);
-    }
-  }
-
-  useEffect(() => {
-    loadTracks();
-  }, [refreshKey]);
-
   useEffect(() => {
     loadInitialData();
-  }, [profile.email, refreshKey, page, debouncedSearchTerm, isLibraryOnly, selectedTrack]);
+  }, [profile.email, refreshKey, page, debouncedSearchTerm, isLibraryOnly, selectedTrack, selectedType, activeView]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -483,124 +515,389 @@ function UserDashboard({
     : library.items;
 
   return (
-    <main className="mx-auto max-w-7xl space-y-5 p-5">
-      <section className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-bold text-markee-text">Thư viện kỹ năng</h1>
-          <p className="text-xs text-markee-muted">Xin chào {profile.displayName}. Danh sách chính chỉ hiển thị kỹ năng đã được duyệt.</p>
-        </div>
-        {!isLibraryOnly && (
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setActiveView('library')}
-              className={`rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
-                activeView === 'library' ? 'bg-markee-primary text-white' : 'border border-markee-border bg-white text-markee-muted hover:bg-markee-bg'
-              }`}
-            >
-              Thư viện chung
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveView('workspace')}
-              className={`rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
-                activeView === 'workspace' ? 'bg-markee-primary text-white' : 'border border-markee-border bg-white text-markee-muted hover:bg-markee-bg'
-              }`}
-            >
-              Không gian của tôi
-            </button>
+    <main className="mx-auto max-w-7xl p-5">
+      <div className="flex h-full w-full gap-6">
+        {/* Left Column: Sidebar Filters */}
+        <aside className="w-64 shrink-0 pr-2 space-y-6 hidden md:block border-r border-gray-100">
+          {/* Nhóm 1 - LOẠI TÀI SẢN */}
+          <div>
+            <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2.5">Loại tài sản</h3>
+            <div className="flex flex-col gap-1">
+              {["Tất cả", "Prompt", "Skill", "SOP", "Context Pack", "Workflow", "Checklist"].map((type) => {
+                const isActive = selectedType === type;
+                const count = type === "Tất cả" ? counts.total : (counts.byType[type.toLowerCase()] || 0);
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => {
+                      setPage(0);
+                      setSelectedType(type);
+                    }}
+                    className={`text-left px-3 py-2 rounded-lg text-xs transition-all cursor-pointer flex items-center justify-between w-full ${
+                      isActive
+                        ? "font-bold text-markee-primary bg-red-50"
+                        : "text-gray-500 hover:text-markee-primary hover:bg-gray-50"
+                    }`}
+                  >
+                    <span>{type}</span>
+                    <span className="ml-auto bg-slate-100 text-slate-500 text-[10px] font-medium py-0.5 px-2 rounded-full">
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        )}
-      </section>
 
-      {(isLibraryOnly || activeView === 'library') && (
-        <div className="flex flex-col md:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-markee-sub" />
-            <input
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Tìm kiếm kỹ năng, danh mục hoặc người tạo..."
-              className="w-full rounded-xl border border-markee-border bg-white py-3 pl-11 pr-4 text-sm text-markee-text outline-none transition-colors placeholder:text-markee-sub focus:border-markee-primary"
-            />
+          {/* Nhóm 2 - PHÒNG BAN */}
+          <div>
+            <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2.5">Phòng ban</h3>
+            <div className="flex flex-col gap-1">
+              {[
+                "Tất cả",
+                "Track 1: SI Delivery (System/SOC)",
+                "Track 2: Marketing (SEO/Ads)",
+                "Track 3: Dev + DevOps (SaaS)",
+                "Track 4: AI Team (Products)",
+                "Track 5: Sales (Closing)",
+                "Khác",
+              ].map((track) => {
+                const isActive = selectedTrack === track;
+                const dbTrack = mapTrackToDbValue(track);
+                const count = track === "Tất cả" ? counts.total : (counts.byTrack[dbTrack] || 0);
+                return (
+                  <button
+                    key={track}
+                    type="button"
+                    onClick={() => {
+                      setPage(0);
+                      setSelectedTrack(track);
+                    }}
+                    className={`text-left px-3 py-2 rounded-lg text-xs transition-all cursor-pointer flex items-center justify-between w-full ${
+                      isActive
+                        ? "font-bold text-markee-primary bg-red-50"
+                        : "text-gray-500 hover:text-markee-primary hover:bg-gray-50"
+                    }`}
+                  >
+                    <span className="truncate mr-2">{track}</span>
+                    <span className="ml-auto bg-slate-100 text-slate-500 text-[10px] font-medium py-0.5 px-2 rounded-full shrink-0">
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <div className="w-full md:w-64">
-            <select
-              value={selectedTrack}
-              onChange={(e) => {
-                setPage(0);
-                setSelectedTrack(e.target.value);
-              }}
-              className="w-full h-full rounded-xl border border-markee-border bg-white px-4 py-3 text-sm text-markee-text focus:border-markee-primary outline-none transition-colors cursor-pointer"
-            >
-              <option value="">Tất cả Phòng ban</option>
-              {tracks.map(track => (
-                <option key={track} value={track}>{track}</option>
-              ))}
-            </select>
+        </aside>
+
+        {/* Right Column: Main Content */}
+        <div className="flex-1 min-w-0 space-y-5">
+          {/* Header section */}
+          <section className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="text-lg font-bold text-markee-text">Thư viện kỹ năng</h1>
+              <p className="text-xs text-markee-muted">Xin chào {profile.displayName}. Danh sách chính chỉ hiển thị kỹ năng đã được duyệt.</p>
+            </div>
+            {!isLibraryOnly && (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveView('library')}
+                  className={`rounded-lg px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
+                    activeView === 'library' ? 'bg-markee-primary text-white' : 'border border-markee-border bg-white text-markee-muted hover:bg-markee-bg'
+                  }`}
+                >
+                  Thư viện chung
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveView('workspace')}
+                  className={`rounded-lg px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
+                    activeView === 'workspace' ? 'bg-markee-primary text-white' : 'border border-markee-border bg-white text-markee-muted hover:bg-markee-bg'
+                  }`}
+                >
+                  Không gian của tôi
+                </button>
+              </div>
+            )}
+          </section>
+
+          {/* Search Bar & Buttons */}
+          {(isLibraryOnly || activeView === 'library') && (
+            <div className="flex gap-3">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-markee-sub" />
+                <input
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Tìm kiếm kỹ năng, danh mục hoặc người tạo..."
+                  className="w-full rounded-xl border border-markee-border bg-white py-3 pl-11 pr-4 text-sm text-markee-text outline-none transition-colors placeholder:text-markee-sub focus:border-markee-primary"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsUploadModalOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-markee-primary px-5 py-3 text-xs font-semibold text-white transition-colors hover:bg-markee-hover cursor-pointer shadow-sm shrink-0"
+              >
+                <Plus className="h-4 w-4" />
+                Upload Asset
+              </button>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            {!isLibraryOnly && activeView === 'workspace' && (
+              <div className="flex gap-2 border-b border-markee-border pb-3">
+                <button
+                  type="button"
+                  onClick={() => setWorkspaceTab('approved')}
+                  className={`rounded-lg px-4 py-2 text-xs font-semibold transition-colors cursor-pointer ${
+                    workspaceTab === 'approved'
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      : 'border border-markee-border bg-white text-markee-muted hover:bg-markee-bg'
+                  }`}
+                >
+                  Kỹ năng đã duyệt ({approvedWorkspaceSkills.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWorkspaceTab('pending')}
+                  className={`rounded-lg px-4 py-2 text-xs font-semibold transition-colors cursor-pointer ${
+                    workspaceTab === 'pending'
+                      ? 'bg-amber-500/10 text-amber-700 border border-amber-500/30'
+                      : 'border border-markee-border bg-white text-markee-muted hover:bg-markee-bg'
+                  }`}
+                >
+                  Kỹ năng đang chờ duyệt ({pendingWorkspaceSkills.length})
+                </button>
+              </div>
+            )}
+            
+            {loading ? (
+              <div className="rounded-lg border border-markee-border bg-white p-8 text-center text-sm text-markee-muted">Đang tải dữ liệu...</div>
+            ) : (
+              <>
+                <div className="grid gap-6 grid-cols-1 xl:grid-cols-2">
+                  {displayedSkills.map((skill) => (
+                    <SkillCardItem
+                      key={skill.id}
+                      skill={skill}
+                      userEmail={profile.email}
+                      showStatus={!isLibraryOnly && activeView === 'workspace'}
+                      allowVoting={isLibraryOnly || activeView === 'library'}
+                      onPreview={() => setPreviewSkill(skill)}
+                    />
+                  ))}
+                </div>
+
+                {displayedSkills.length === 0 && (
+                  <div className="rounded-lg border border-markee-border bg-white p-8 text-center text-sm text-markee-muted">
+                    Chưa có skill để hiển thị.
+                  </div>
+                )}
+
+                {(isLibraryOnly || activeView === 'library') && library.total > PAGE_SIZE && (
+                  <PaginationControls page={page} total={library.total} pageSize={PAGE_SIZE} onPageChange={setPage} />
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Upload Asset Modal */}
+      {isUploadModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl relative animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="flex justify-between items-center pb-4 border-b border-gray-100 mb-4">
+              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <Plus className="h-4 w-4 text-markee-primary" />
+                + Upload Asset — 2 Step Flow
+              </h3>
+              <button
+                onClick={() => setIsUploadModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUploadSubmit} className="space-y-5">
+              {/* Row 1 (Steps) */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="rounded-lg bg-red-50/50 border border-red-100 p-3 flex items-center gap-2.5">
+                  <div className="w-6 h-6 rounded-full bg-markee-primary text-white text-[10px] font-bold flex items-center justify-center">
+                    1
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-gray-900">Step 1: Paste content</div>
+                    <div className="text-[10px] text-gray-500">Dán nội dung tài sản thô</div>
+                  </div>
+                </div>
+                <div className="rounded-lg bg-gray-50 border border-gray-100 p-3 flex items-center gap-2.5 opacity-70">
+                  <div className="w-6 h-6 rounded-full bg-gray-300 text-gray-600 text-[10px] font-bold flex items-center justify-center">
+                    2
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-gray-700">Step 2: AI classify & governance</div>
+                    <div className="text-[10px] text-gray-500">AI phân loại và kiểm duyệt</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Row 2 (Asset Type - Clickable) */}
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">
+                  ASSET TYPE GỢI Ý
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {["Prompt", "Skill", "SOP", "KB", "Context Pack", "Workflow", "Checklist"].map((type) => {
+                    const isActive = uploadType === type;
+                    return (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => setUploadType(type)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer border ${
+                          isActive
+                            ? "bg-purple-100 text-purple-800 border-purple-200"
+                            : "bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
+                        }`}
+                      >
+                        {type}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Row 3 (Inputs) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                    TITLE *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={uploadTitle}
+                    onChange={(e) => setUploadTitle(e.target.value)}
+                    placeholder="Nhập tiêu đề tài sản..."
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-800 focus:outline-none focus:border-markee-primary bg-white outline-none transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                    PROJECT
+                  </label>
+                  <select
+                    value={uploadProject}
+                    onChange={(e) => setUploadProject(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-800 focus:outline-none focus:border-markee-primary bg-white outline-none transition-colors cursor-pointer"
+                  >
+                    <option value="">Không có dự án</option>
+                    <option value="Project Alpha">Project Alpha</option>
+                    <option value="Project Beta">Project Beta</option>
+                    <option value="System SOC Portal">System SOC Portal</option>
+                    <option value="Marketing Campaign A">Marketing Campaign A</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Row 4 (Textarea) */}
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                  CONTENT *
+                </label>
+                <textarea
+                  required
+                  rows={6}
+                  value={uploadContent}
+                  onChange={(e) => setUploadContent(e.target.value)}
+                  placeholder="Dán hoặc nhập nội dung tài sản chi tiết vào đây..."
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-800 focus:outline-none focus:border-markee-primary bg-white outline-none transition-colors resize-none leading-relaxed"
+                />
+              </div>
+
+              {/* Footer */}
+              <div className="flex justify-between items-center pt-3 border-t border-gray-100">
+                <div />
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsUploadModalOpen(false);
+                      setUploadTitle('');
+                      setUploadContent('');
+                    }}
+                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    className="rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-xs font-semibold text-white transition-colors cursor-pointer shadow-sm"
+                  >
+                    AI classify -&gt;
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
-      <div className={`grid gap-4 ${!isLibraryOnly && activeView === 'library' ? 'lg:grid-cols-[1fr_320px]' : ''}`}>
-        <section className="space-y-4">
-          {!isLibraryOnly && activeView === 'workspace' && (
-            <div className="flex gap-2 border-b border-markee-border pb-3">
+      {/* Preview Asset Modal */}
+      {previewSkill && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-3xl h-[85vh] rounded-xl bg-white p-6 shadow-xl relative flex flex-col justify-between animate-in zoom-in-95 duration-200">
+            <div>
               <button
-                type="button"
-                onClick={() => setWorkspaceTab('approved')}
-                className={`rounded-lg px-4 py-2 text-xs font-semibold transition-colors ${
-                  workspaceTab === 'approved'
-                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                    : 'border border-markee-border bg-white text-markee-muted hover:bg-markee-bg'
-                }`}
+                onClick={() => setPreviewSkill(null)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
               >
-                Kỹ năng đã duyệt ({approvedWorkspaceSkills.length})
+                <X className="h-5 w-5" />
+              </button>
+              
+              <div className="flex flex-wrap gap-2 items-center mb-3">
+                <span className="bg-purple-50 text-purple-700 border border-purple-100 px-2 py-0.5 rounded text-[10px] font-semibold uppercase">
+                  {previewSkill.skill_type || 'Workflow'}
+                </span>
+                <span className="text-xs text-gray-400">·</span>
+                <span className="text-xs text-gray-500 font-medium">Tác giả: {previewSkill.authorName}</span>
+              </div>
+              
+              <h3 className="text-xl font-bold text-gray-900 mb-4">{previewSkill.title}</h3>
+            </div>
+
+            <div className="flex-1 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-5 text-sm text-gray-700 leading-relaxed font-sans mb-5">
+              <pre className="whitespace-pre-wrap font-sans text-xs sm:text-sm text-gray-800 leading-6">
+                {previewSkill.markdown_content}
+              </pre>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-3 border-t border-gray-100 shrink-0">
+              <button
+                onClick={() => setPreviewSkill(null)}
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
+              >
+                Đóng
               </button>
               <button
-                type="button"
-                onClick={() => setWorkspaceTab('pending')}
-                className={`rounded-lg px-4 py-2 text-xs font-semibold transition-colors ${
-                  workspaceTab === 'pending'
-                    ? 'bg-amber-500/10 text-amber-700 border border-amber-500/30'
-                    : 'border border-markee-border bg-white text-markee-muted hover:bg-markee-bg'
-                }`}
+                onClick={() => {
+                  downloadSkillMarkdown(previewSkill);
+                  setPreviewSkill(null);
+                }}
+                className="rounded-lg bg-markee-primary px-4 py-2 text-xs font-semibold text-white hover:bg-markee-hover transition-colors cursor-pointer"
               >
-                Kỹ năng đang chờ duyệt ({pendingWorkspaceSkills.length})
+                Tải về Markdown
               </button>
             </div>
-          )}
-          {loading ? (
-            <div className="rounded-lg border border-markee-border bg-white p-8 text-center text-sm text-markee-muted">Đang tải dữ liệu...</div>
-          ) : (
-            <>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {displayedSkills.map((skill) => (
-                  <SkillCardItem
-                    key={skill.id}
-                    skill={skill}
-                    userEmail={profile.email}
-                    showStatus={!isLibraryOnly && activeView === 'workspace'}
-                    allowVoting={isLibraryOnly || activeView === 'library'}
-                  />
-                ))}
-              </div>
-
-              {displayedSkills.length === 0 && (
-                <div className="rounded-lg border border-markee-border bg-white p-8 text-center text-sm text-markee-muted">
-                  Chưa có skill để hiển thị.
-                </div>
-              )}
-
-              {(isLibraryOnly || activeView === 'library') && library.total > PAGE_SIZE && (
-                <PaginationControls page={page} total={library.total} pageSize={PAGE_SIZE} onPageChange={setPage} />
-              )}
-            </>
-          )}
-        </section>
-
-        {!isLibraryOnly && activeView === 'library' && <TrendingSkills skills={trendingSkills} />}
-      </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -2500,9 +2797,11 @@ function KnowledgeHubDashboard() {
   }, [projects]);
 
   const filteredSummaries = useMemo(() => {
+    const cleanSearch = removeVietnameseTones(searchTerm);
     return flattenedSummaries.filter(s => {
-      const matchSearch = s.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        s.insights.some(i => i.toLowerCase().includes(searchTerm.toLowerCase()));
+      const cleanTitle = removeVietnameseTones(s.title);
+      const matchSearch = cleanTitle.includes(cleanSearch) || 
+        s.insights.some(i => removeVietnameseTones(i).includes(cleanSearch));
       const matchProject = selectedProjectFilter === 'Tất cả' || s.projectName === selectedProjectFilter;
       return matchSearch && matchProject;
     });
@@ -2926,6 +3225,10 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
 
   async function handleSummarizeProject() {
     if (!selectedProject) return;
+    if (members.length === 0) {
+      showToast("Không có dữ liệu hoạt động nào để tổng hợp.", "error");
+      return;
+    }
     setIsSummarizing(true);
     setIsSummaryModalOpen(true);
     setSummaryResult(null);
@@ -3137,7 +3440,12 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
                 <button
                   type="button"
                   onClick={handleSummarizeProject}
-                  className="px-3.5 py-2 bg-markee-primary hover:bg-markee-hover text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                  disabled={members.length === 0}
+                  className={`px-3.5 py-2 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
+                    members.length === 0
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed opacity-60'
+                      : 'bg-markee-primary hover:bg-markee-hover text-white'
+                  }`}
                 >
                   Tổng hợp Tri thức Dự án
                 </button>

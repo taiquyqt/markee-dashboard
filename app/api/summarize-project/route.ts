@@ -71,34 +71,72 @@ QUY TẮC:
     "Insight cấp cao 3"
   ]
 }`;
-    const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ parts: [{ text: combinedContent }] }],
-        generationConfig: {
-          temperature: 0.2,
-          responseMimeType: "application/json",
-        },
-      }),
-    });
+    let geminiResponse: Response;
+    try {
+      geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ parts: [{ text: combinedContent }] }],
+          generationConfig: {
+            temperature: 0.2,
+            responseMimeType: "application/json",
+          },
+        }),
+      });
+    } catch (networkError: unknown) {
+      console.error("Gemini API Network/Fetch Error:", networkError);
+      const message = networkError instanceof Error ? networkError.message : String(networkError);
+      return NextResponse.json(
+        { error: `Lỗi kết nối mạng đến API Gemini: ${message}` },
+        { status: 503 }
+      );
+    }
 
     if (!geminiResponse.ok) {
       const errText = await geminiResponse.text();
-      console.error("Gemini API error:", errText);
-      return NextResponse.json({ error: "Lỗi kết nối API Gemini" }, { status: 502 });
+      console.error(`Gemini API error (Status ${geminiResponse.status}):`, errText);
+      let errMsg = `Lỗi kết nối API Gemini (Status: ${geminiResponse.status})`;
+      try {
+        const parsed = JSON.parse(errText);
+        if (parsed.error && parsed.error.message) {
+          errMsg += `: ${parsed.error.message}`;
+        }
+      } catch {
+        // Ignore JSON parsing errors for error text
+      }
+      return NextResponse.json({ error: errMsg }, { status: geminiResponse.status || 502 });
     }
 
-    const geminiData = await geminiResponse.json();
+    let geminiData: unknown;
+    try {
+      geminiData = await geminiResponse.json();
+    } catch (jsonError: unknown) {
+      console.error("Failed to parse Gemini response as JSON:", jsonError);
+      return NextResponse.json({ error: "Phản hồi từ Gemini không phải là JSON hợp lệ" }, { status: 502 });
+    }
+
     let resultJSON;
     try {
-      const rawText = geminiData.candidates[0].content.parts[0].text;
+      const typedData = geminiData as {
+        candidates?: {
+          content?: {
+            parts?: {
+              text?: string;
+            }[];
+          };
+        }[];
+      };
+      const rawText = typedData?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!rawText) {
+        throw new Error("Không tìm thấy text trong candidates");
+      }
       const cleanJsonStr = rawText.replace(/```json\n?|\n?```/g, "").trim();
       resultJSON = JSON.parse(cleanJsonStr);
     } catch (parseError) {
       console.error("Error parsing Gemini response:", parseError, geminiData);
-      return NextResponse.json({ error: "Lỗi định dạng phản hồi AI" }, { status: 500 });
+      return NextResponse.json({ error: "Lỗi định dạng phản hồi AI từ Gemini" }, { status: 500 });
     }
 
     return NextResponse.json({
