@@ -73,7 +73,7 @@ QUY TẮC:
 }`;
     let geminiResponse: Response;
     try {
-      geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+      geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${GEMINI_API_KEY}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -88,10 +88,7 @@ QUY TẮC:
     } catch (networkError: unknown) {
       console.error("Gemini API Network/Fetch Error:", networkError);
       const message = networkError instanceof Error ? networkError.message : String(networkError);
-      return NextResponse.json(
-        { error: `Lỗi kết nối mạng đến API Gemini: ${message}` },
-        { status: 503 }
-      );
+      return NextResponse.json({ error: `Lỗi kết nối mạng đến API Gemini: ${message}` }, { status: 503 });
     }
 
     if (!geminiResponse.ok) {
@@ -145,7 +142,7 @@ QUY TẮC:
       insights: resultJSON.insights || [],
       contributors,
       totalTokens,
-      model: "Auto-Summary (Gemini 3.5 Flash)",
+      model: "Auto-Summary (Gemini 3.5 Flash Lite)",
     });
   } catch (error) {
     console.error("Internal Server Error in summarize-project:", error);

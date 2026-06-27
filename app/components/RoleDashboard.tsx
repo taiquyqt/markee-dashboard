@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { ChevronDown, ChevronLeft, ChevronRight, Download, Medal, Search, ThumbsUp, BookOpen, Plus, X, Folder, User, Edit, Trash2, ArrowLeftRight, Settings, MessageSquare } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Download, Medal, Search, ThumbsUp, BookOpen, Plus, X, Folder, User, Edit, Trash2, ArrowLeftRight, Settings } from 'lucide-react';
 import {
   Area,
   AreaChart,
@@ -72,7 +72,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { DEPARTMENT_TRACKS, mapTrackDisplayToDbValue } from '@/lib/org-structure';
 import UserGuideModal from './UserGuideModal';
-import ChatShell from '@/app/chat/_components/ChatShell';
+import AIChat from './AIChat/AIChat';
 
 const PAGE_SIZE = 6;
 const TOOL_COLORS = ['#E3000F', '#FF3344', '#f59e0b', '#a855f7', '#059669', '#0d9488'];
@@ -281,7 +281,7 @@ function SkillCardItem({
   const trackName = getSkillTrackName(skill);
 
   return (
-    <article className="skill-card card-hover rounded-xl border border-gray-200 bg-white p-5 shadow-sm flex flex-col justify-between h-full min-h-[220px]">
+    <article className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md flex flex-col justify-between h-full min-h-55">
       <div>
         {/* Header */}
         <div className="flex justify-between items-start gap-3">
@@ -303,7 +303,7 @@ function SkillCardItem({
           >
             {skill.title}
           </h3>
-          <p className="text-gray-500 text-xs mt-1.5 line-clamp-2 leading-relaxed min-h-[2.5rem]">
+          <p className="text-gray-500 text-xs mt-1.5 line-clamp-2 leading-relaxed min-h-10">
             {summary || 'Chưa có mô tả nội dung.'}
           </p>
         </div>
@@ -319,7 +319,7 @@ function SkillCardItem({
           <span className="text-gray-300">•</span>
           <div className="flex items-center gap-1">
             <User className="h-3 w-3 text-gray-400" />
-            <span className="text-gray-500 truncate max-w-[100px]">{skill.authorName}</span>
+            <span className="text-gray-500 truncate max-w-25">{skill.authorName}</span>
           </div>
           <span className="text-gray-300">•</span>
           <span className="font-mono text-gray-400">v1.0.0</span>
@@ -1004,7 +1004,7 @@ function UserDashboard({
                             <div className="border-t border-markee-border/60 mt-4 pt-3 flex items-center justify-between text-[11px] text-markee-muted">
                               <div className="flex items-center gap-1.5">
                                 <span>📁 Dự án:</span>
-                                <span className="font-semibold text-markee-text truncate max-w-[150px]">{project?.name || 'Khác / Chưa phân loại'}</span>
+                                <span className="font-semibold text-markee-text truncate max-w-37.5">{project?.name || 'Khác / Chưa phân loại'}</span>
                               </div>
                               <div>
                                 🪙 <span className="font-semibold">{wip.tokens_used || 0}</span> tokens
@@ -1373,7 +1373,7 @@ function UserDashboard({
             {/* Body */}
             <div className="p-6 space-y-4">
               <p className="text-xs text-markee-muted leading-relaxed">
-                Bạn đang chuyển phiên AI <span className="font-bold text-markee-text">"{activeMoveWip.title || 'Không có tiêu đề'}"</span> sang một dự án khác.
+                Bạn đang chuyển phiên AI <span className="font-bold text-markee-text">&quot;{activeMoveWip.title || 'Không có tiêu đề'}&quot;</span> sang một dự án khác.
               </p>
               
               <div>
@@ -1445,7 +1445,7 @@ function UserDashboard({
             {/* Body */}
             <div className="p-6">
               <p className="text-xs text-markee-muted leading-relaxed">
-                Bạn có chắc chắn muốn xóa phiên AI <span className="font-bold text-markee-text">"{activeDeleteWip.title || 'Không có tiêu đề'}"</span>? 
+                Bạn có chắc chắn muốn xóa phiên AI <span className="font-bold text-markee-text">&quot;{activeDeleteWip.title || 'Không có tiêu đề'}&quot;</span>? 
                 Hành động này không thể hoàn tác.
               </p>
             </div>
@@ -1806,7 +1806,7 @@ export default function RoleDashboard() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [libraryRefreshKey, setLibraryRefreshKey] = useState(0);
-  const [activeTab, setActiveTab] = useState<'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'chat'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat'>('overview');
   const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   async function loadProfile() {
@@ -1909,15 +1909,15 @@ export default function RoleDashboard() {
 
           <button
             type="button"
-            onClick={() => setActiveTab('chat')}
+            onClick={() => setActiveTab('ai_chat')}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
-              activeTab === 'chat'
+              activeTab === 'ai_chat'
                 ? 'bg-markee-primary text-white shadow-md shadow-red-100'
                 : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
             }`}
           >
-            <MessageSquare className="w-4 h-4" />
-            <span>AI Chat</span>
+            <span>💬</span>
+            <span>Trò chuyện cùng AI</span>
           </button>
 
           {profile.role === 'user' && (
@@ -1999,7 +1999,10 @@ export default function RoleDashboard() {
         </header>
 
         {/* Scrollable Content Container */}
-        <div className={`flex-1 ${activeTab === 'chat' ? 'flex flex-col min-h-0' : 'overflow-y-auto'}`}>
+        <div className={`flex-1 ${activeTab === 'ai_chat' ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
+          {activeTab === 'ai_chat' && (
+            <AIChat profile={profile} />
+          )}
           {activeTab === 'overview' && profile.role === 'admin' && (
             <AdminDashboard
               profile={profile}
@@ -2027,9 +2030,6 @@ export default function RoleDashboard() {
             <KnowledgeHubDashboard />
           )}
 
-          {activeTab === 'chat' && (
-            <ChatShell profile={profile} />
-          )}
         </div>
       </div>
 
@@ -2592,7 +2592,7 @@ function UserManagement() {
                             {(() => {
                               const usagePercent = lic.usagePercent !== undefined ? lic.usagePercent : 0;
                               return (
-                                <div className="flex items-center gap-3 w-full max-w-[140px]">
+                                <div className="flex items-center gap-3 w-full max-w-35">
                                   {/* Rãnh nền xám (Background Track) */}
                                   <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden">
                                     {/* Thanh màu chạy theo % */}
@@ -4729,7 +4729,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
                                         </div>
 
                                         {log.title && (
-                                          <div className="font-bold text-xs text-markee-text mb-1 bg-linear-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                                          <div className="font-bold text-xs text-markee-text mb-1 bg-linear-to-r from-slate-900 to-slate-700 bg-clip-text">
                                             {log.title}
                                           </div>
                                         )}
@@ -4885,7 +4885,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
             {/* Body */}
             <div className="p-6 space-y-4">
               <p className="text-xs text-markee-muted leading-relaxed">
-                Bạn đang chuyển bản nháp <span className="font-bold text-markee-text">"{activeMoveWIP.title || 'Không có tiêu đề'}"</span> sang một dự án khác. 
+                Bạn đang chuyển bản nháp <span className="font-bold text-markee-text">&quot;{activeMoveWIP.title || 'Không có tiêu đề'}&quot;</span> sang một dự án khác. 
                 Sau khi chuyển thành công, bản nháp này sẽ biến mất khỏi dòng thời gian của dự án hiện tại.
               </p>
               
@@ -4958,7 +4958,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
             {/* Body */}
             <div className="p-6">
               <p className="text-xs text-markee-muted leading-relaxed">
-                Bạn có chắc chắn muốn xóa bản nháp <span className="font-bold text-markee-text">"{activeDeleteWIP.title || 'Không có tiêu đề'}"</span>? 
+                Bạn có chắc chắn muốn xóa bản nháp <span className="font-bold text-markee-text">&quot;{activeDeleteWIP.title || 'Không có tiêu đề'}&quot;</span>? 
                 Hành động này không thể hoàn tác.
               </p>
             </div>
