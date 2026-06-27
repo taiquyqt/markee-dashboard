@@ -12,11 +12,13 @@ interface ChatSession {
 interface ChatSidebarProps {
   sessions: ChatSession[];
   activeSessionId: string | null;
+  loadingSessions: boolean;
   onSelectSession: (id: string) => void;
   onCreateSession: () => void;
   onDeleteSession: (id: string) => void;
   onInjectPrompt: (prompt: string) => void;
-  onRenameSession: (id: string, newTitle: string) => void; // Thêm prop này
+  onRenameSession: (id: string, newTitle: string) => void;
+  createError?: string | null;
 }
 
 const QUICK_INJECTS = [
@@ -29,11 +31,13 @@ const QUICK_INJECTS = [
 export default function ChatSidebar({
   sessions,
   activeSessionId,
+  loadingSessions,
   onSelectSession,
   onCreateSession,
   onDeleteSession,
   onInjectPrompt,
   onRenameSession,
+  createError,
 }: ChatSidebarProps) {
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
   
@@ -67,6 +71,14 @@ export default function ChatSidebar({
             <Plus className="h-4 w-4" />
             Phiên trò chuyện mới
           </button>
+
+          {createError && (
+            <div className="mt-2">
+              <p className="text-[10px] text-red-600 bg-red-50 border border-red-100 rounded-lg p-2">
+                {createError}
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
@@ -75,7 +87,11 @@ export default function ChatSidebar({
             Lịch sử trò chuyện ({sessions.length})
           </div>
 
-          {sessions.length === 0 ? (
+          {loadingSessions ? (
+            <div className="text-center py-8 text-xs text-slate-400 italic">
+              Đang tải...
+            </div>
+          ) : sessions.length === 0 ? (
             <div className="text-center py-8 text-xs text-slate-400 italic">
               Chưa có phiên chat nào
             </div>

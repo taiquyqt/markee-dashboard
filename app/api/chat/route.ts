@@ -1,5 +1,5 @@
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { streamText, convertToModelMessages } from 'ai';
+import { createOpenAI } from '@ai-sdk/openai';
+import { streamText } from 'ai';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -7,8 +7,9 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-const gemini = createGoogleGenerativeAI({
-  apiKey: process.env.GEMINI_API_KEY,
+const openai = createOpenAI({
+  apiKey: process.env.SHOPAIKEY_API_KEY,
+  baseURL: 'https://api.shopaikey.com/v1',
 });
 
 const SYSTEM_PROMPT = `Bạn là Markee AI Assistant — trợ lý AI chuyên nghiệp của Markee AI Ops Center.
@@ -27,45 +28,68 @@ Vai trò của bạn:
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { messages, conversationId } = body;
+    const { messages, conversationId, sessionId, model: requestedModel } = body;
 
     if (!messages || !Array.isArray(messages)) {
       return Response.json({ error: 'Missing messages' }, { status: 400 });
     }
 
+    // Extract the last user message text for DB persistence
     const lastUserMessage = [...messages].reverse().find(
       (m: { role: string }) => m.role === 'user'
     );
+    const userContent = lastUserMessage
+      ? typeof lastUserMessage.content === 'string'
+        ? lastUserMessage.content
+        : JSON.stringify(lastUserMessage.content)
+      : '';
 
-    if (lastUserMessage && conversationId) {
-      await supabase.from('messages').insert({
-        conversation_id: conversationId,
-        role: 'user',
-        content: typeof lastUserMessage.content === 'string'
-          ? lastUserMessage.content
-          : JSON.stringify(lastUserMessage.content),
-      });
-
-      await supabase
-        .from('conversations')
-        .update({ updated_at: new Date().toISOString() })
-        .eq('id', conversationId);
+    // Persist user message to the appropriate table
+    if (userContent) {
+      if (sessionId) {
+        // New AIChat path: write to chat_messages
+        await supabase.from('chat_messages').insert({
+          session_id: sessionId,
+          role: 'user',
+          content: userContent,
+        });
+      } else if (conversationId) {
+        // Legacy ChatShell path: write to messages
+        await supabase.from('messages').insert({
+          conversation_id: conversationId,
+          role: 'user',
+          content: userContent,
+        });
+        await supabase
+          .from('conversations')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', conversationId);
+      }
     }
 
-    const modelMessages = await convertToModelMessages(messages);
+    const modelName = requestedModel || 'gpt-4o';
 
     const result = streamText({
-      model: gemini('gemini-2.0-flash'),
+      model: openai(modelName),
       system: SYSTEM_PROMPT,
-      messages: modelMessages,
+      messages,
       onFinish: async ({ text }) => {
-        if (conversationId && text) {
+        if (!text) return;
+
+        if (sessionId) {
+          // New AIChat path
+          await supabase.from('chat_messages').insert({
+            session_id: sessionId,
+            role: 'assistant',
+            content: text,
+          });
+        } else if (conversationId) {
+          // Legacy ChatShell path
           await supabase.from('messages').insert({
             conversation_id: conversationId,
             role: 'assistant',
             content: text,
           });
-
           await supabase
             .from('conversations')
             .update({ updated_at: new Date().toISOString() })
@@ -78,7 +102,7 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error('Chat API error:', error);
     return Response.json(
-      { error: 'Loi he thong AI Chat' },
+      { error: 'Lỗi hệ thống AI Chat' },
       { status: 500 }
     );
   }

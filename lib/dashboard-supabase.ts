@@ -1250,3 +1250,149 @@ export async function fetchInjectAssets(email: string, search?: string): Promise
   return data || [];
 }
 
+// === AIChat Session Functions (chat_sessions / chat_messages tables) ===
+
+export interface ChatSessionRow {
+  id: string;
+  user_id: string;
+  title: string;
+  created_at: string;
+}
+
+export interface ChatMessageRow {
+  id: string;
+  session_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
+}
+
+export async function fetchChatSessions(userId: string): Promise<ChatSessionRow[]> {
+  const { data, error } = await supabase
+    .from('chat_sessions')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching chat sessions:', error);
+    return [];
+  }
+  return data || [];
+}
+
+export async function createChatSession(
+  userId: string,
+  title?: string
+): Promise<ChatSessionRow | null> {
+  const id = crypto.randomUUID();
+  const { data, error } = await supabase
+    .from('chat_sessions')
+    .insert({
+      id,
+      user_id: userId,
+      title: title || 'Phiên trò chuyện mới',
+    })
+    .select('*')
+    .single();
+
+  if (error) {
+    console.error('Error creating chat session:', error);
+    return null;
+  }
+  return data;
+}
+
+export async function deleteChatSession(sessionId: string): Promise<boolean> {
+  const { error: msgErr } = await supabase
+    .from('chat_messages')
+    .delete()
+    .eq('session_id', sessionId);
+
+  if (msgErr) {
+    console.error('Error deleting chat messages:', msgErr);
+    return false;
+  }
+
+  const { error } = await supabase
+    .from('chat_sessions')
+    .delete()
+    .eq('id', sessionId);
+
+  if (error) {
+    console.error('Error deleting chat session:', error);
+    return false;
+  }
+  return true;
+}
+
+export async function updateChatSessionTitle(
+  sessionId: string,
+  title: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('chat_sessions')
+    .update({ title })
+    .eq('id', sessionId);
+
+  if (error) {
+    console.error('Error updating session title:', error);
+    return false;
+  }
+  return true;
+}
+
+export async function fetchChatMessages(
+  sessionId: string
+): Promise<ChatMessageRow[]> {
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('*')
+    .eq('session_id', sessionId)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching chat messages:', error);
+    return [];
+  }
+  return data || [];
+}
+
+export async function insertChatMessage(msg: {
+  session_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+}): Promise<ChatMessageRow | null> {
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .insert(msg)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error inserting chat message:', error);
+    return null;
+  }
+  return data;
+}
+
+export async function fetchLegacyConversationsAsSessions(
+  userId: string,
+  userEmail: string
+): Promise<ChatSessionRow[]> {
+  const { data, error } = await supabase
+    .from('conversations')
+    .select('*')
+    .eq('user_id', userEmail)
+    .order('updated_at', { ascending: false });
+
+  if (error || !data) return [];
+
+  return data.map((c) => ({
+    id: c.id,
+    user_id: userId,
+    title: c.title || 'Hội thoại cũ',
+    created_at: c.created_at,
+  }));
+}
+

@@ -73,7 +73,7 @@ QUY TẮC:
 }`;
     let geminiResponse: Response;
     try {
-      geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${GEMINI_API_KEY}`, {
+      geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -142,7 +142,7 @@ QUY TẮC:
       insights: resultJSON.insights || [],
       contributors,
       totalTokens,
-      model: "Auto-Summary (Gemini 3.5 Flash Lite)",
+      model: "Auto-Summary (Gemini 2.5 Flash)",
     });
   } catch (error) {
     console.error("Internal Server Error in summarize-project:", error);
