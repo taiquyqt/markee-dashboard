@@ -1,5 +1,6 @@
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
+import { ALL_TRACK_DB_VALUES } from "./org-structure";
 
 export type UserRole = "admin" | "user";
 export type SkillStatus = "pending" | "approved" | "rejected";
@@ -215,7 +216,7 @@ export async function fetchApprovedSkills(page = 0, pageSize = DEFAULT_PAGE_SIZE
 
   if (teamTrack && teamTrack !== "Tất cả") {
     if (teamTrack === "Khác") {
-      query = query.or('team_track.is.null,team_track.eq.,team_track.not.in.("Track 1: SI Delivery","Track 2: Marketing","Track 3: Dev + DevOps","Track 4: AI Team","Track 5: Sales")');
+      query = query.or(`team_track.is.null,team_track.eq.,team_track.not.in.(${ALL_TRACK_DB_VALUES.map((t) => `"` + t + `"`).join(",")})`);
     } else {
       query = query.eq("team_track", teamTrack);
     }
@@ -364,7 +365,7 @@ export async function fetchLibraryCounts(userEmail?: string): Promise<LibraryCou
   const byTrack: Record<string, number> = {};
   let total = 0;
 
-  const knownTracks = ["Track 1: SI Delivery", "Track 2: Marketing", "Track 3: Dev + DevOps", "Track 4: AI Team", "Track 5: Sales"];
+  const knownTracks = ALL_TRACK_DB_VALUES;
   let trackSum = 0;
 
   (data || []).forEach((row) => {
@@ -1114,6 +1115,284 @@ export async function fetchMyWIPs(email: string): Promise<AISession[]> {
     tier: "WIP",
     title: row.title,
     team_track: row.team_track,
+  }));
+}
+
+export interface Conversation {
+  id: string;
+  user_id: string;
+  title: string;
+  project_id: number | null;
+  model: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  conversation_id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  injected_assets: { id: number; title: string }[];
+  created_at: string;
+}
+
+export async function fetchConversations(email: string): Promise<Conversation[]> {
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("*")
+    .eq("user_id", email)
+    .order("updated_at", { ascending: false });
+
+  if (error) {
+    console.error("Error fetching conversations:", error);
+    return [];
+  }
+  return data || [];
+}
+
+export async function createConversation(email: string, title?: string): Promise<Conversation | null> {
+  const { data, error } = await supabase
+    .from("conversations")
+    .insert({
+      user_id: email,
+      title: title || 'Hoi thoai moi',
+      model: 'gemini',
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Error creating conversation:", error);
+    return null;
+  }
+  return data;
+}
+
+export async function deleteConversation(id: string): Promise<boolean> {
+  const { error } = await supabase
+    .from("conversations")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    console.error("Error deleting conversation:", error);
+    return false;
+  }
+  return true;
+}
+
+export async function updateConversationTitle(id: string, title: string): Promise<void> {
+  const { error } = await supabase
+    .from("conversations")
+    .update({ title, updated_at: new Date().toISOString() })
+    .eq("id", id);
+
+  if (error) {
+    console.error("Error updating conversation title:", error);
+  }
+}
+
+export async function fetchMessages(conversationId: string): Promise<ChatMessage[]> {
+  const { data, error } = await supabase
+    .from("messages")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("Error fetching messages:", error);
+    return [];
+  }
+  return (data || []).map((m) => ({
+    ...m,
+    injected_assets: m.injected_assets || [],
+  }));
+}
+
+export async function insertMessage(msg: {
+  conversation_id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  injected_assets?: { id: number; title: string }[];
+}): Promise<ChatMessage | null> {
+  const { data, error } = await supabase
+    .from("messages")
+    .insert(msg)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Error inserting message:", error);
+    return null;
+  }
+  return data;
+}
+
+export async function fetchInjectAssets(email: string, search?: string): Promise<{ id: number; title: string; category: string }[]> {
+  let query = supabase
+    .from("skill_library")
+    .select("id, title, category")
+    .eq("status", "approved")
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (search) {
+    query = query.ilike("title", `%${search}%`);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error("Error fetching inject assets:", error);
+    return [];
+  }
+  return data || [];
+}
+
+// === AIChat Session Functions (chat_sessions / chat_messages tables) ===
+
+export interface ChatSessionRow {
+  id: string;
+  user_id: string;
+  title: string;
+  created_at: string;
+}
+
+export interface ChatMessageRow {
+  id: string;
+  session_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
+}
+
+export async function fetchChatSessions(userId: string): Promise<ChatSessionRow[]> {
+  const { data, error } = await supabase
+    .from('chat_sessions')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching chat sessions:', error);
+    return [];
+  }
+  return data || [];
+}
+
+export async function createChatSession(
+  userId: string,
+  title?: string
+): Promise<ChatSessionRow | null> {
+  const id = crypto.randomUUID();
+  const { data, error } = await supabase
+    .from('chat_sessions')
+    .insert({
+      id,
+      user_id: userId,
+      title: title || 'Phiên trò chuyện mới',
+    })
+    .select('*')
+    .single();
+
+  if (error) {
+    console.error('Error creating chat session:', error);
+    return null;
+  }
+  return data;
+}
+
+export async function deleteChatSession(sessionId: string): Promise<boolean> {
+  const { error: msgErr } = await supabase
+    .from('chat_messages')
+    .delete()
+    .eq('session_id', sessionId);
+
+  if (msgErr) {
+    console.error('Error deleting chat messages:', msgErr);
+    return false;
+  }
+
+  const { error } = await supabase
+    .from('chat_sessions')
+    .delete()
+    .eq('id', sessionId);
+
+  if (error) {
+    console.error('Error deleting chat session:', error);
+    return false;
+  }
+  return true;
+}
+
+export async function updateChatSessionTitle(
+  sessionId: string,
+  title: string
+): Promise<boolean> {
+  const { error } = await supabase
+    .from('chat_sessions')
+    .update({ title })
+    .eq('id', sessionId);
+
+  if (error) {
+    console.error('Error updating session title:', error);
+    return false;
+  }
+  return true;
+}
+
+export async function fetchChatMessages(
+  sessionId: string
+): Promise<ChatMessageRow[]> {
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('*')
+    .eq('session_id', sessionId)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching chat messages:', error);
+    return [];
+  }
+  return data || [];
+}
+
+export async function insertChatMessage(msg: {
+  session_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+}): Promise<ChatMessageRow | null> {
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .insert(msg)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error inserting chat message:', error);
+    return null;
+  }
+  return data;
+}
+
+export async function fetchLegacyConversationsAsSessions(
+  userId: string,
+  userEmail: string
+): Promise<ChatSessionRow[]> {
+  const { data, error } = await supabase
+    .from('conversations')
+    .select('*')
+    .eq('user_id', userEmail)
+    .order('updated_at', { ascending: false });
+
+  if (error || !data) return [];
+
+  return data.map((c) => ({
+    id: c.id,
+    user_id: userId,
+    title: c.title || 'Hội thoại cũ',
+    created_at: c.created_at,
   }));
 }
 
