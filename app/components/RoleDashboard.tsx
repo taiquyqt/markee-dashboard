@@ -5,9 +5,9 @@
 /* eslint-disable @next/next/no-img-element */
 
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { ChevronLeft, ChevronRight, Download, Medal, Search, ThumbsUp, BookOpen, Plus, X, Folder, User, Edit, Trash2, ArrowLeftRight, Settings } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Download, Medal, Search, ThumbsUp, BookOpen, Plus, X, Folder, User, Edit, Trash2, ArrowLeftRight, Settings } from 'lucide-react';
 import {
   Area,
   AreaChart,
@@ -70,6 +70,7 @@ import {
   fetchMyWIPs,
 } from '@/lib/dashboard-supabase';
 import { supabase } from '@/lib/supabase';
+import { DEPARTMENT_TRACKS, mapTrackDisplayToDbValue } from '@/lib/org-structure';
 import UserGuideModal from './UserGuideModal';
 import AIChat from './AIChat/AIChat';
 
@@ -412,12 +413,6 @@ function PaginationControls({
   );
 }
 
-function mapTrackToDbValue(track: string): string {
-  if (track === "Tất cả") return "";
-  const match = track.match(/(Track \d+:[^(]+)/);
-  return match ? match[1].trim() : track;
-}
-
 function UserDashboard({
   profile,
   refreshKey = 0,
@@ -471,7 +466,7 @@ function UserDashboard({
     if (!activeDeleteWip) return;
     setIsDeletingWip(true);
     try {
-      const { error } = await supabase.from('skill_library').delete().eq('id', activeDeleteWip.id);
+      const { error } = await supabase.from('skill_library').delete().eq('id', activeDeleteWip.id).eq('author_id', profile.email);
       if (error) throw error;
 
       showWipToast('Xóa phiên AI thành công!', 'success');
@@ -496,7 +491,7 @@ function UserDashboard({
     if (!activeMoveWip || !moveWipProjectId) return;
     setIsMovingWip(true);
     try {
-      const { error } = await supabase.from('skill_library').update({ project_id: moveWipProjectId }).eq('id', activeMoveWip.id);
+      const { error } = await supabase.from('skill_library').update({ project_id: moveWipProjectId }).eq('id', activeMoveWip.id).eq('author_id', profile.email);
       if (error) throw error;
 
       showWipToast('Chuyển dự án thành công!', 'success');
@@ -529,7 +524,8 @@ function UserDashboard({
           markdown_content: editWipContent, 
           team_track: editWipTrack 
         })
-        .eq('id', activeEditWip.id);
+        .eq('id', activeEditWip.id)
+        .eq('author_id', profile.email);
       
       if (error) throw error;
 
@@ -553,6 +549,8 @@ function UserDashboard({
 
 
   const [selectedTrack, setSelectedTrack] = useState('Tất cả');
+  const [selectedPosition, setSelectedPosition] = useState<string | null>(null);
+  const [expandedTracks, setExpandedTracks] = useState<Set<string>>(new Set());
   const [selectedType, setSelectedType] = useState('Tất cả');
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [previewSkill, setPreviewSkill] = useState<SkillCard | null>(null);
@@ -579,11 +577,14 @@ function UserDashboard({
     return workspaceSkills.filter((skill) => skill.status === 'pending');
   }, [workspaceSkills]);
 
+  const loadRequestIdRef = useRef(0);
+
   async function loadInitialData() {
+    const requestId = ++loadRequestIdRef.current;
     setLoading(true);
 
     try {
-      const dbTrack = mapTrackToDbValue(selectedTrack);
+      const dbTrack = mapTrackDisplayToDbValue(selectedTrack);
       const isWorkspace = !isLibraryOnly && activeView === 'workspace';
       const countsPromise = fetchLibraryCounts(isWorkspace ? profile.email : undefined);
 
@@ -592,6 +593,7 @@ function UserDashboard({
           fetchApprovedSkills(page, PAGE_SIZE, profile.email, debouncedSearchTerm, dbTrack, selectedType),
           countsPromise,
         ]);
+        if (requestId !== loadRequestIdRef.current) return;
         setLibrary(skills);
         setCounts(libCounts);
         return;
@@ -602,10 +604,11 @@ function UserDashboard({
         fetchTrendingSkills(5, profile.email),
         fetchMyWorkspaceSkills(profile.email),
         fetchMyWIPs(profile.email),
-        fetchProjects(),
+        fetchProjects(profile.email, profile.role === 'admin'),
         countsPromise,
       ]);
 
+      if (requestId !== loadRequestIdRef.current) return;
       setLibrary(skills);
       setTrendingSkills(trending);
       setWorkspaceSkills(workspace);
@@ -613,7 +616,9 @@ function UserDashboard({
       setProjects(allProjects);
       setCounts(libCounts);
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   }
 
@@ -686,39 +691,132 @@ function UserDashboard({
           <div>
             <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2.5">Phòng ban</h3>
             <div className="flex flex-col gap-1">
-              {[
-                "Tất cả",
-                "Track 1: SI Delivery (System/SOC)",
-                "Track 2: Marketing (SEO/Ads)",
-                "Track 3: Dev + DevOps (SaaS)",
-                "Track 4: AI Team (Products)",
-                "Track 5: Sales (Closing)",
-                "Khác",
-              ].map((track) => {
-                const isActive = selectedTrack === track;
-                const dbTrack = mapTrackToDbValue(track);
-                const count = track === "Tất cả" ? counts.total : (counts.byTrack[dbTrack] || 0);
+              {/* "Tất cả" button */}
+              <button
+                key="all"
+                type="button"
+                onClick={() => {
+                  setPage(0);
+                  setSelectedTrack('Tất cả');
+                  setSelectedPosition(null);
+                  setExpandedTracks(new Set());
+                }}
+                className={`text-left px-3 py-2 rounded-lg text-xs transition-all cursor-pointer flex items-center justify-between w-full ${
+                  selectedTrack === 'Tất cả'
+                    ? "font-bold text-markee-primary bg-red-50"
+                    : "text-gray-500 hover:text-markee-primary hover:bg-gray-50"
+                }`}
+              >
+                <span className="truncate mr-2">Tất cả</span>
+                <span className="ml-auto bg-slate-100 text-slate-500 text-[10px] font-medium py-0.5 px-2 rounded-full shrink-0">
+                  {counts.total}
+                </span>
+              </button>
+
+              {/* Department tracks with expandable positions */}
+              {DEPARTMENT_TRACKS.map((track) => {
+                const isTrackActive = selectedTrack === track.displayLabel;
+                const isExpanded = expandedTracks.has(track.dbValue);
+                const trackCount = counts.byTrack[track.dbValue] || 0;
+
                 return (
-                  <button
-                    key={track}
-                    type="button"
-                    onClick={() => {
-                      setPage(0);
-                      setSelectedTrack(track);
-                    }}
-                    className={`text-left px-3 py-2 rounded-lg text-xs transition-all cursor-pointer flex items-center justify-between w-full ${
-                      isActive
-                        ? "font-bold text-markee-primary bg-red-50"
-                        : "text-gray-500 hover:text-markee-primary hover:bg-gray-50"
-                    }`}
-                  >
-                    <span className="truncate mr-2">{track}</span>
-                    <span className="ml-auto bg-slate-100 text-slate-500 text-[10px] font-medium py-0.5 px-2 rounded-full shrink-0">
-                      {count}
-                    </span>
-                  </button>
+                  <div key={track.dbValue}>
+                    {/* Track header */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isTrackActive && selectedPosition === null) {
+                          // Already filtering by this entire track — just toggle expand/collapse
+                          setExpandedTracks((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(track.dbValue)) {
+                              next.delete(track.dbValue);
+                            } else {
+                              next.add(track.dbValue);
+                            }
+                            return next;
+                          });
+                        } else {
+                          // Filter by this entire track + expand positions
+                          setPage(0);
+                          setSelectedTrack(track.displayLabel);
+                          setSelectedPosition(null);
+                          setExpandedTracks((prev) => {
+                            const next = new Set(prev);
+                            next.add(track.dbValue);
+                            return next;
+                          });
+                        }
+                      }}
+                      className={`text-left px-3 py-2 rounded-lg text-xs transition-all cursor-pointer flex items-center justify-between w-full ${
+                        isTrackActive && !selectedPosition
+                          ? "font-bold text-markee-primary bg-red-50"
+                          : "text-gray-500 hover:text-markee-primary hover:bg-gray-50"
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5 truncate mr-2">
+                        <ChevronDown
+                          size={12}
+                          className={`shrink-0 transition-transform ${isExpanded ? '' : '-rotate-90'}`}
+                        />
+                        <span>{track.displayLabel}</span>
+                      </span>
+                      <span className="ml-auto bg-slate-100 text-slate-500 text-[10px] font-medium py-0.5 px-2 rounded-full shrink-0">
+                        {trackCount}
+                      </span>
+                    </button>
+
+                    {/* Position list (expandable) */}
+                    {isExpanded && (
+                      <div className="ml-5 border-l border-gray-100 pl-3 mt-0.5 space-y-0.5">
+                        {track.positions.map((pos) => {
+                          const isPosActive = selectedPosition === pos.id;
+                          return (
+                            <button
+                              key={pos.id}
+                              type="button"
+                              onClick={() => {
+                                setPage(0);
+                                setSelectedTrack(track.displayLabel);
+                                setSelectedPosition(pos.id);
+                              }}
+                              className={`text-left px-3 py-1.5 rounded-md text-xs transition-all cursor-pointer block w-full ${
+                                isPosActive
+                                  ? "font-semibold text-markee-primary bg-red-50 border-l-2 border-markee-primary"
+                                  : "text-gray-400 hover:text-gray-600 hover:bg-gray-50 border-l-2 border-transparent"
+                              }`}
+                            >
+                              {pos.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
+
+              {/* "Khác" button (flat, no positions) */}
+              <button
+                key="other"
+                type="button"
+                onClick={() => {
+                  setPage(0);
+                  setSelectedTrack('Khác');
+                  setSelectedPosition(null);
+                  setExpandedTracks(new Set());
+                }}
+                className={`text-left px-3 py-2 rounded-lg text-xs transition-all cursor-pointer flex items-center justify-between w-full ${
+                  selectedTrack === 'Khác'
+                    ? "font-bold text-markee-primary bg-red-50"
+                    : "text-gray-500 hover:text-markee-primary hover:bg-gray-50"
+                }`}
+              >
+                <span className="truncate mr-2">Khác</span>
+                <span className="ml-auto bg-slate-100 text-slate-500 text-[10px] font-medium py-0.5 px-2 rounded-full shrink-0">
+                  {counts.byTrack["Khác"] || 0}
+                </span>
+              </button>
             </div>
           </div>
         </aside>
@@ -776,7 +874,7 @@ function UserDashboard({
               <button
                 type="button"
                 onClick={() => setIsUploadModalOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-markee-primary px-5 py-3 text-xs font-semibold text-white transition-colors hover:bg-markee-hover cursor-pointer shadow-sm shrink-0"
+                className="btn-press inline-flex items-center gap-1.5 rounded-xl bg-markee-primary px-5 py-3 text-xs font-semibold text-white transition-colors hover:bg-markee-hover cursor-pointer shadow-sm shrink-0"
               >
                 <Plus className="h-4 w-4" />
                 Upload Asset
@@ -982,7 +1080,7 @@ function UserDashboard({
 
       {/* Upload Asset Modal */}
       {isUploadModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 animate-in fade-in duration-200 modal-backdrop">
           <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl relative animate-in zoom-in-95 duration-200">
             {/* Header */}
             <div className="flex justify-between items-center pb-4 border-b border-gray-100 mb-4">
@@ -1125,7 +1223,7 @@ function UserDashboard({
 
       {/* Preview Asset Modal */}
       {previewSkill && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 animate-in fade-in duration-200 modal-backdrop">
           <div className="w-full max-w-3xl h-[85vh] rounded-xl bg-white p-6 shadow-xl relative flex flex-col justify-between animate-in zoom-in-95 duration-200">
             <div>
               <button
@@ -1939,6 +2037,7 @@ export default function RoleDashboard() {
           {activeTab === 'knowledge_hub' && profile.role === 'admin' && (
             <KnowledgeHubDashboard />
           )}
+
         </div>
       </div>
 
@@ -2006,6 +2105,7 @@ function UserManagement() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isRenewModalOpen, setIsRenewModalOpen] = useState(false);
   const [selectedLicense, setSelectedLicense] = useState<AILicense | null>(null);
+  const [isCreatingLicense, setIsCreatingLicense] = useState(false);
 
   // Create license form state
   const [newLicenseEmail, setNewLicenseEmail] = useState('');
@@ -2101,6 +2201,8 @@ function UserManagement() {
       return;
     }
 
+    if (isCreatingLicense) return;
+    setIsCreatingLicense(true);
     showToast('Đang tạo bản quyền...', 'loading');
     try {
       const newLic = await createAILicense({
@@ -2122,6 +2224,8 @@ function UserManagement() {
     } catch (err) {
       console.error(err);
       showToast('Lỗi khi tạo bản quyền AI', 'error');
+    } finally {
+      setIsCreatingLicense(false);
     }
   }
 
@@ -2248,7 +2352,7 @@ function UserManagement() {
   const getLicenseStatus = (lic: AILicense) => {
     const isCanceled = localStorage.getItem(`license_status_${lic.id}`) === 'Canceled';
     if (isCanceled) return 'Canceled';
-    const isExpired = new Date(lic.expiration_date) < new Date();
+    const isExpired = new Date(lic.expiration_date + "T23:59:59") < new Date();
     return isExpired ? 'Expired' : 'Active';
   };
 
@@ -3999,6 +4103,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
   async function handleCreateProject() {
     const trimmedName = projectName.trim();
     if (!trimmedName) return;
+    if (isCreating) return;
     setIsCreating(true);
     try {
       const newProject = await createNewProject(trimmedName, profile.email);
@@ -4031,7 +4136,11 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
   }
 
 
+  const logsLoadingRef = useRef(false);
+
   async function loadUserLogs(projId: number, userEmail: string, isInitial = false) {
+    if (logsLoadingRef.current && !isInitial) return;
+    logsLoadingRef.current = true;
     setLogsLoading(true);
     const nextPage = isInitial ? 0 : page + 1;
     try {
@@ -4047,6 +4156,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
       console.error(err);
     } finally {
       setLogsLoading(false);
+      logsLoadingRef.current = false;
     }
   }
 
@@ -4122,20 +4232,12 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
     }
   }
 
+  const [isSavingSummary, setIsSavingSummary] = useState(false);
+
   async function handleSaveSummary(newSummary: SummaryItem) {
     if (!selectedProject) return;
-    
-    let currentSummaries: SummaryItem[] = [];
-    if (selectedProject.master_summary) {
-      try {
-        const parsed = JSON.parse(selectedProject.master_summary) as SummaryItem[];
-        if (Array.isArray(parsed)) {
-          currentSummaries = parsed;
-        }
-      } catch (e) {
-        console.error("Error parsing existing master_summary:", e);
-      }
-    }
+    if (isSavingSummary) return;
+    setIsSavingSummary(true);
     
     const summaryItem = {
       title: newSummary.title,
@@ -4146,12 +4248,26 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
       timestamp: new Date().toISOString(),
     };
     
-    const updatedSummaries = [...currentSummaries, summaryItem];
-    const serialized = JSON.stringify(updatedSummaries);
-    
     try {
       showToast('Đang lưu bản tổng hợp...', 'loading');
-      await updateProjectSummary(selectedProject.id, serialized);
+      await supabase.rpc('append_project_summary', {
+        p_project_id: selectedProject.id,
+        p_item_json: JSON.stringify([summaryItem]),
+      });
+      
+      let currentSummaries: SummaryItem[] = [];
+      if (selectedProject.master_summary) {
+        try {
+          const parsed = JSON.parse(selectedProject.master_summary) as SummaryItem[];
+          if (Array.isArray(parsed)) {
+            currentSummaries = parsed;
+          }
+        } catch (e) {
+          console.error("Error parsing existing master_summary:", e);
+        }
+      }
+      const updatedSummaries = [...currentSummaries, summaryItem];
+      const serialized = JSON.stringify(updatedSummaries);
       
       const updatedProj = {
         ...selectedProject,
@@ -4168,6 +4284,8 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
     } catch (err) {
       console.error(err);
       showToast('Lỗi khi lưu tổng hợp tri thức', 'error');
+    } finally {
+      setIsSavingSummary(false);
     }
   }
 
