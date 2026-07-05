@@ -7,6 +7,7 @@ import { Plus, Folder, X, Send, Search } from 'lucide-react';
 interface Project {
   id: number;
   name: string;
+  type?: 'WIP_GLOBAL' | 'PERSONAL';
 }
 
 interface FolderItem {
@@ -35,6 +36,8 @@ interface ChatInputProps {
   onOpenSkillModal?: () => void;
   pendingKnowledgeProjectName?: string | null;
   onClearPendingKnowledgeProjectName?: () => void;
+  onSummarizeChat?: () => void;
+  hasMessages?: boolean;
 }
 
 export default function ChatInput({
@@ -58,6 +61,8 @@ export default function ChatInput({
   onOpenSkillModal,
   pendingKnowledgeProjectName = null,
   onClearPendingKnowledgeProjectName,
+  onSummarizeChat,
+  hasMessages = false,
 }: ChatInputProps) {
   const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
@@ -152,33 +157,24 @@ export default function ChatInput({
       {/* Hidden Context Badge (Only render in new chat creation mode) */}
       {isNewChatMode && hiddenContext && (
         <div className="max-w-4xl mx-auto mb-2 flex items-center gap-2">
-          <div className="inline-flex items-center gap-1.5 bg-indigo-50 border border-indigo-100 text-indigo-800 text-[11px] font-semibold px-2.5 py-1 rounded-xl shadow-3xs max-w-full">
-            <span>🧠 Tri thức:</span>
+          <div className="inline-flex items-center gap-1.5 bg-purple-50 border border-purple-100 text-purple-700 text-[10px] font-bold px-2.5 py-1 rounded-lg shadow-3xs max-w-full">
+            <span>💬 Trí thức:</span>
             <span className="truncate max-w-[200px] md:max-w-md font-bold">{hiddenContext.title}</span>
             <button
               type="button"
-              onClick={() => setHiddenContext && setHiddenContext(null)}
-              className="hover:bg-indigo-100 p-0.5 rounded-full cursor-pointer ml-1 flex items-center justify-center border-0 bg-transparent text-indigo-500 hover:text-indigo-800 transition-colors font-bold text-[10px]"
+              onClick={() => {
+                if (setHiddenContext) setHiddenContext(null);
+                if (onClearPendingKnowledgeProjectName) onClearPendingKnowledgeProjectName();
+                if (activeSession && onUpdateSessionProject) {
+                  onUpdateSessionProject(activeSession.id, null);
+                }
+              }}
+              className="hover:bg-purple-100 p-0.5 rounded-full cursor-pointer ml-1 flex items-center justify-center border-0 bg-transparent text-purple-400 hover:text-purple-700 transition-colors font-bold text-[10px]"
               title="Gỡ tri thức này"
             >
               ✕
             </button>
           </div>
-          
-          {pendingKnowledgeProjectName && (
-            <div className="inline-flex items-center gap-1.5 bg-rose-50 border border-rose-100 text-rose-800 text-[11px] font-semibold px-2.5 py-1 rounded-xl shadow-3xs max-w-full">
-              <span>📁 Dự án:</span>
-              <span className="truncate max-w-[150px] md:max-w-xs font-bold">{pendingKnowledgeProjectName}</span>
-              <button
-                type="button"
-                onClick={() => onClearPendingKnowledgeProjectName && onClearPendingKnowledgeProjectName()}
-                className="hover:bg-rose-100 p-0.5 rounded-full cursor-pointer ml-1 flex items-center justify-center border-0 bg-transparent text-rose-500 hover:text-rose-800 transition-colors font-bold text-[10px]"
-                title="Gỡ dự án tri thức"
-              >
-                ✕
-              </button>
-            </div>
-          )}
         </div>
       )}
 
@@ -222,11 +218,24 @@ export default function ChatInput({
           className="flex-1 resize-none border-0 bg-transparent text-xs text-slate-800 focus:ring-0 focus:outline-none p-2 leading-relaxed max-h-40 min-h-9 outline-none"
         />
 
+        {/* Button Tổng hợp Chat (Chỉ hiện khi có messages) */}
+        {hasMessages && onSummarizeChat && (
+          <button
+            type="button"
+            onClick={onSummarizeChat}
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded text-xs font-semibold transition-all cursor-pointer border-0 outline-none shrink-0"
+            title="Tổng hợp nội dung cuộc trò chuyện"
+          >
+            <span>📝</span>
+            <span className="hidden sm:inline">Tổng hợp</span>
+          </button>
+        )}
+        
         {/* Dropdown chọn Model */}
         <select
           value={selectedModel}
           onChange={(e) => setSelectedModel(e.target.value)}
-          className="text-xs bg-slate-100 border-none rounded p-1.5 text-slate-700 outline-none focus:ring-1 focus:ring-markee-primary cursor-pointer shrink-0 max-w-[140px] truncate"
+          className="text-xs bg-slate-100 border-none rounded p-1.5 text-slate-900 outline-none focus:ring-1 focus:ring-markee-primary cursor-pointer shrink-0 max-w-35 truncate"
         >
           <option value="claude-haiku-4-5-20251001" disabled={disabledModels.has('claude-haiku-4-5-20251001')}>
             Claude 4.5 Haiku {disabledModels.has('claude-haiku-4-5-20251001') && '(Lỗi)'}
@@ -288,11 +297,12 @@ export default function ChatInput({
 
             {/* Danh sách */}
             <div className="max-h-60 overflow-y-auto space-y-1 pr-1">
-              {personalFolders.filter(p => p.name.toLowerCase().includes(projectSearchQuery.toLowerCase())).length === 0 ? (
-                <div className="text-center text-xs text-slate-400 py-6">Không tìm thấy thư mục nào</div>
+              {projects.filter(p => p.name.toLowerCase().includes(projectSearchQuery.toLowerCase())).length === 0 ? (
+                <div className="text-center text-xs text-slate-400 py-6">Không tìm thấy thư mục/dự án nào</div>
               ) : (
-                personalFolders.filter(p => p.name.toLowerCase().includes(projectSearchQuery.toLowerCase())).map(p => {
+                projects.filter(p => p.name.toLowerCase().includes(projectSearchQuery.toLowerCase())).map(p => {
                   const isSelected = activeSession?.project_id === p.id;
+                  const isGlobalProject = p.type === 'WIP_GLOBAL';
                   return (
                     <button
                       key={p.id}
@@ -309,7 +319,11 @@ export default function ChatInput({
                           : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900 border border-transparent bg-transparent'
                       }`}
                     >
-                      <span className="truncate">{p.name}</span>
+                      <span className="truncate flex items-center gap-1.5">
+                        <span>{isGlobalProject ? '🌐' : '📁'}</span>
+                        <span className="truncate">{p.name}</span>
+                        {isGlobalProject && <span className="text-[9px] bg-slate-100 text-slate-500 px-1 rounded font-normal">Chung</span>}
+                      </span>
                       {isSelected && <span className="text-[10px] bg-red-100 text-markee-primary px-1.5 py-0.5 rounded-full font-bold">Đang chọn</span>}
                     </button>
                   );

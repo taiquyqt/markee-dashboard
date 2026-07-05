@@ -89,6 +89,7 @@ interface ChatWindowProps {
   personalFolders?: { id: number; name: string }[];
   pendingKnowledgeProjectName?: string | null;
   onClearPendingKnowledgeProjectName?: () => void;
+  onSummarizeChat?: () => void;
 }
 
 export default function ChatWindow({
@@ -112,6 +113,7 @@ export default function ChatWindow({
   personalFolders = [],
   pendingKnowledgeProjectName = null,
   onClearPendingKnowledgeProjectName,
+  onSummarizeChat,
 }: ChatWindowProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isSkillModalOpen, setIsSkillModalOpen] = useState(false);
@@ -244,6 +246,8 @@ export default function ChatWindow({
         onOpenSkillModal={() => setIsSkillModalOpen(true)}
         pendingKnowledgeProjectName={pendingKnowledgeProjectName}
         onClearPendingKnowledgeProjectName={onClearPendingKnowledgeProjectName}
+        onSummarizeChat={onSummarizeChat}
+        hasMessages={messages.length > 0}
       />
 
       {/* Modal 2: Chọn Skill dạng Cascading Dropdown */}

@@ -19,6 +19,8 @@ interface ChatSession {
 interface Project {
   id: number;
   name: string;
+  type?: 'WIP_GLOBAL' | 'PERSONAL';
+  created_by?: string | null;
 }
 
 interface ProjectDetailViewProps {
@@ -68,7 +70,9 @@ export default function ProjectDetailView({
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
   const [skillSearchQuery, setSkillSearchQuery] = useState('');
 
-  const currentFolder = personalFolders.find(f => f.id === folderId);
+  const matchedProject = projects.find(p => p.id === folderId);
+  const isGlobal = matchedProject?.type === 'WIP_GLOBAL';
+  const currentFolder = personalFolders.find(f => f.id === folderId) || matchedProject;
   const folderName = currentFolder?.name || 'Thư mục không xác định';
 
   const folderSessions = sessions.filter(s => s.project_id === folderId);
@@ -131,19 +135,23 @@ export default function ProjectDetailView({
             <div>
               <h1 className="text-base font-bold text-slate-800 flex items-center gap-1.5">
                 <span>{folderName}</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFolderNameInput(folderName);
-                    setIsEditingName(true);
-                  }}
-                  className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors border-0 bg-transparent cursor-pointer"
-                  title="Đổi tên thư mục"
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                </button>
+                {!isGlobal && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFolderNameInput(folderName);
+                      setIsEditingName(true);
+                    }}
+                    className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors border-0 bg-transparent cursor-pointer"
+                    title="Đổi tên thư mục"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </h1>
-              <p className="text-[10px] text-slate-400 font-semibold mt-0.5">Dự án cá nhân chứa {folderSessions.length} đoạn hội thoại</p>
+              <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                {isGlobal ? 'Dự án chung' : 'Dự án cá nhân'} chứa {folderSessions.length} đoạn hội thoại
+              </p>
             </div>
           )}
         </div>

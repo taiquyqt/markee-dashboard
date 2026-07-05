@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { type UserProfile } from '@/lib/dashboard-supabase';
@@ -13,6 +13,7 @@ interface ChatSession {
   id: string;
   title: string;
   created_at: string;
+  project_id?: number | null;
 }
 
 interface Message {
@@ -38,14 +39,28 @@ function generateUUID() {
 }
 
 async function fetchChatCompletion(model: string, history: { role: string; content: string }[]) {
-  if (model.startsWith('google/')) {
+  const name = model.toLowerCase();
+
+  // 1. Nhóm Gemini (Gemini 3.5 Flash, 3.1 Lite...)
+  if (name.includes('gemini') || name.includes('google')) {
     const geminiModel = model.replace('google/', '');
     const geminiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
     
-    const contents = history.map((m) => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
-    }));
+    let systemInstruction = undefined;
+    const contents = [];
+    
+    for (const m of history) {
+      if (m.role === 'system') {
+        systemInstruction = {
+          parts: [{ text: m.content }]
+        };
+      } else {
+        contents.push({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }],
+        });
+      }
+    }
 
     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`, {
       method: 'POST',
@@ -54,6 +69,7 @@ async function fetchChatCompletion(model: string, history: { role: string; conte
       },
       body: JSON.stringify({
         contents,
+        ...(systemInstruction ? { systemInstruction } : {}),
       }),
     });
 
@@ -68,7 +84,10 @@ async function fetchChatCompletion(model: string, history: { role: string; conte
       throw new Error('Gemini API returned an empty response.');
     }
     return reply;
-  } else {
+  }
+
+  // 2. Model Auto (Auto Free) -> OpenRouter
+  if (name.includes('auto') || name.includes('free') || name.includes('openrouter')) {
     const apiKey = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY || '';
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -96,6 +115,32 @@ async function fetchChatCompletion(model: string, history: { role: string; conte
     }
     return reply;
   }
+
+  // 3. Nhóm GPT & Claude (GPT-4o Mini, Claude 4.5 Haiku...) -> ShopAIKey
+  const apiKey = process.env.NEXT_PUBLIC_SHOPAIKEY_API_KEY || '';
+  const response = await fetch('https://api.shopaikey.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: model,
+      messages: history,
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`ShopAIKey request failed with status ${response.status}: ${errText}`);
+  }
+
+  const resData = await response.json();
+  const reply = resData.choices?.[0]?.message?.content;
+  if (!reply) {
+    throw new Error('ShopAIKey returned an empty response.');
+  }
+  return reply;
 }
 
 export default function AIChat({ profile }: AIChatProps) {
@@ -106,6 +151,7 @@ export default function AIChat({ profile }: AIChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const isSendingRef = useRef(false);
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [selectedModel, setSelectedModel] = useState('openrouter/free');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -123,8 +169,32 @@ export default function AIChat({ profile }: AIChatProps) {
   const [initialMsgToSend, setInitialMsgToSend] = useState<string | null>(null);
   const [hiddenContext, setHiddenContext] = useState<{ title: string; content: string } | null>(null);
 
+  const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [chatSummaryText, setChatSummaryText] = useState('');
+
   // Read URL search params
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const queryTab = searchParams.get('tab');
+      const querySessionId = searchParams.get('session_id');
+      const queryFolderId = searchParams.get('folderId');
+
+      if (queryTab === 'ai_chat' && !querySessionId && !queryFolderId) {
+        const lastId = localStorage.getItem('lastActiveChatId');
+        if (lastId) {
+          const params = new URLSearchParams(window.location.search);
+          params.set('session_id', lastId);
+          router.replace(`${window.location.pathname}?${params.toString()}`);
+          return;
+        }
+      }
+
+      if (queryTab === 'ai_chat' && querySessionId) {
+        localStorage.setItem('lastActiveChatId', querySessionId);
+      }
+    }
+
     const queryProjectId = searchParams.get('project_id');
     const queryInitialMsg = searchParams.get('initial_msg');
     const querySessionId = searchParams.get('session_id');
@@ -165,7 +235,7 @@ export default function AIChat({ profile }: AIChatProps) {
             setMessages([]);
             
             // Kích hoạt hiển thị Badge Dự án (Silent Update)
-            setPendingSessionProjectId(null);
+            setPendingSessionProjectId(parsedData.projectId || null);
             setPendingKnowledgeProjectName(parsedData.projectName || null);
 
             // Lưu nội dung summary vào hiddenContext, ĐỂ TRỐNG thẻ textarea
@@ -197,7 +267,7 @@ export default function AIChat({ profile }: AIChatProps) {
   useEffect(() => {
     const fetchMetadata = async () => {
       try {
-        const { data: projData } = await supabase.from('projects').select('id, name');
+        const { data: projData } = await supabase.from('projects').select('id, name, type, created_by');
         setProjects(projData || []);
 
         const { data: deptData } = await supabase.from('departments').select('id, name');
@@ -384,6 +454,9 @@ export default function AIChat({ profile }: AIChatProps) {
   const handleSelectSession = (id: string | null) => {
     exitFolderView();
     if (!id) {
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('lastActiveChatId');
+      }
       setActiveSessionId(null);
       setMessages([]);
       setIsSidebarOpen(false);
@@ -403,6 +476,9 @@ export default function AIChat({ profile }: AIChatProps) {
   };
 
   const handleCreateSession = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('lastActiveChatId');
+    }
     setActiveSessionId(null);
     setMessages([]);
     setPendingSessionProjectId(null);
@@ -412,6 +488,115 @@ export default function AIChat({ profile }: AIChatProps) {
     params.delete('session_id');
     params.set('tab', 'ai_chat');
     router.replace(`${window.location.pathname}?${params.toString()}`);
+  };
+
+  const handleSummarizeChat = async () => {
+    if (messages.length === 0) return;
+
+    // Validate that session belongs to a project before summarizing
+    const activeSessionObj = sessions.find(s => s.id === activeSessionId);
+    const projectId = activeSessionObj?.project_id || null;
+    if (!projectId) {
+      setToast({
+        message: "Vui lòng gán đoạn chat này vào một Dự án (Chung hoặc Cá nhân) trước khi tổng hợp.",
+        type: 'warning'
+      });
+      return;
+    }
+
+    setIsSummarizing(true);
+    setChatSummaryText('');
+    setIsSummaryModalOpen(true);
+    try {
+      const prompt = `Hãy tóm tắt các ý chính và tri thức rút ra từ đoạn hội thoại dưới đây dưới dạng Markdown ngắn gọn, rõ ràng:
+      
+${messages.map(m => `${m.role === 'user' ? 'Người dùng' : 'AI'}: ${m.content}`).join('\n\n')}`;
+      
+      const summary = await fetchChatCompletion(selectedModel, [{ role: 'user', content: prompt }]);
+      setChatSummaryText(summary);
+    } catch (e) {
+      console.error('Error summarizing chat:', e);
+      setToast({ message: 'Lỗi khi tổng hợp cuộc trò chuyện', type: 'error' });
+      setIsSummaryModalOpen(false);
+    } finally {
+      setIsSummarizing(false);
+    }
+  };
+
+  const handleSaveSummaryAsWip = async () => {
+    if (!chatSummaryText || !activeSessionId || !profile?.email) return;
+    try {
+      const activeSessionObj = sessions.find(s => s.id === activeSessionId);
+      const projectId = activeSessionObj?.project_id || null;
+      const sessionTitle = activeSessionObj?.title || 'Phiên chat';
+
+      if (!projectId) {
+        setToast({ message: 'Phiên chat này chưa thuộc dự án nào. Vui lòng gán dự án trước khi lưu.', type: 'error' });
+        return;
+      }
+
+      // 1. Fetch current project's master_summary
+      const { data: projectData, error: fetchErr } = await supabase
+        .from('projects')
+        .select('master_summary')
+        .eq('id', projectId)
+        .single();
+
+      if (fetchErr || !projectData) {
+        throw new Error('Không tìm thấy thông tin dự án.');
+      }
+
+      // 2. Parse current summaries
+      let currentSummaries: any[] = [];
+      if (projectData.master_summary) {
+        try {
+          const parsed = typeof projectData.master_summary === 'string'
+            ? JSON.parse(projectData.master_summary)
+            : projectData.master_summary;
+          if (Array.isArray(parsed)) {
+            currentSummaries = parsed;
+          }
+        } catch (e) {
+          console.error("Error parsing existing master_summary:", e);
+        }
+      }
+
+      // 3. Construct new summary item
+      const insights = chatSummaryText
+        .split('\n')
+        .map(line => line.replace(/^-\s*|^\*\s*|^\d+\.\s*/, '').trim())
+        .filter(line => line.length > 0);
+      const finalInsights = insights.length > 0 ? insights : [chatSummaryText];
+
+      const newSummaryItem = {
+        title: "Tổng hợp từ đoạn chat",
+        insights: finalInsights,
+        contributors: profile.displayName || profile.email,
+        author: profile.displayName || profile.email,
+        model: "Từ chat AI center",
+        tool: "Từ chat AI center",
+        timestamp: new Date().toISOString()
+      };
+
+      // Prepend to array
+      const updatedSummaries = [newSummaryItem, ...currentSummaries];
+
+      // 4. Update project master_summary
+      const { error: updateErr } = await supabase
+        .from('projects')
+        .update({
+          master_summary: JSON.stringify(updatedSummaries)
+        })
+        .eq('id', projectId);
+
+      if (updateErr) throw updateErr;
+
+      setToast({ message: 'Lưu vào Kho tri thức thành công!', type: 'success' });
+      setIsSummaryModalOpen(false);
+    } catch (e) {
+      console.error('Error saving WIP:', e);
+      setToast({ message: 'Lỗi khi lưu vào Kho tri thức', type: 'error' });
+    }
   };
 
   const handleDeleteSession = async (sessionId: string) => {
@@ -467,14 +652,15 @@ export default function AIChat({ profile }: AIChatProps) {
   };
 
   const sendMessageContent = async (content: string) => {
-    if (isGenerating) return;
+    if (isSendingRef.current) return;
+    isSendingRef.current = true;
+    setIsGenerating(true);
 
     // Lớp bảo vệ 1: Clear state ngay tức thì để UI cập nhật giấu badge ngay lập tức
+    const localHiddenContext = hiddenContext;
     const localPendingProjectName = pendingKnowledgeProjectName;
     setPendingKnowledgeProjectName(null);
     setHiddenContext(null);
-
-    setIsGenerating(true);
 
     let currentSessionId = activeSessionId;
 
@@ -485,46 +671,6 @@ export default function AIChat({ profile }: AIChatProps) {
         const newSessionId = generateUUID();
         
         let finalProjectId = pendingSessionProjectId;
-        if (localPendingProjectName) {
-          try {
-            // A. Check if Personal Project already exists
-            const { data: existingProj, error: queryErr } = await supabase
-              .from('projects')
-              .select('id')
-              .eq('type', 'PERSONAL')
-              .eq('created_by', profile.email)
-              .eq('name', localPendingProjectName)
-              .maybeSingle();
-
-            if (queryErr) console.error('Error querying personal project:', queryErr);
-
-            if (existingProj) {
-              finalProjectId = existingProj.id;
-            } else {
-              // Create new Personal Project
-              const { data: newProj, error: createProjErr } = await supabase
-                .from('projects')
-                .insert({
-                  name: localPendingProjectName,
-                  type: 'PERSONAL',
-                  created_by: profile.email
-                })
-                .select('id')
-                .single();
-
-              if (createProjErr) {
-                console.error('Error creating personal project:', createProjErr);
-                throw createProjErr;
-              }
-              finalProjectId = newProj.id;
-
-              // Refresh personal folders list in background
-              await loadPersonalFolders();
-            }
-          } catch (projErr) {
-            console.error('Failed to handle lazy-creation of project:', projErr);
-          }
-        }
 
         const { data: newSess, error: sessErr } = await supabase
           .from('chat_sessions')
@@ -578,22 +724,21 @@ export default function AIChat({ profile }: AIChatProps) {
       }
 
       // 5. Build context history for OpenRouter
-      const history = [...messages, newUserMsg].map((m) => ({
+      const history: { role: string; content: string }[] = [...messages, newUserMsg].map((m) => ({
         role: m.role,
         content: m.content,
       }));
 
-      if (hiddenContext) {
-        const combinedContent = `[Tri thức nền tảng:\n${hiddenContext.content}]\n\n--- Yêu cầu hiện tại:\n${content}`;
-        if (history.length > 0) {
-          history[history.length - 1].content = combinedContent;
-        }
-        setHiddenContext(null);
+      if (localHiddenContext) {
+        history.unshift({
+          role: 'system',
+          content: `Bạn là trợ lý AI. Dưới đây là ngữ cảnh của dự án hiện tại: ${localHiddenContext.content}. Hãy dựa vào thông tin này để trả lời câu hỏi của người dùng.`
+        });
       }
 
       // 6. Fetch from API with priority-based Auto-Fallback
       const fallbackList = [
-        'claude-3-haiku-20240307',
+        'claude-haiku-4-5-20251001',
         'gpt-4o-mini',
         'google/gemini-3.5-flash',
         'google/gemini-3.1-flash-lite',
@@ -656,12 +801,14 @@ export default function AIChat({ profile }: AIChatProps) {
         },
       ]);
     } finally {
+      isSendingRef.current = false;
       setIsGenerating(false);
     }
   };
 
   const handleCreateSessionAndSend = async (content: string, projectId: number) => {
-    if (isGenerating) return;
+    if (isSendingRef.current) return;
+    isSendingRef.current = true;
     setIsGenerating(true);
 
     try {
@@ -706,7 +853,7 @@ export default function AIChat({ profile }: AIChatProps) {
         let aiReply = '';
         const currentDisabled = new Set(disabledModels);
         const fallbackList = [
-          'claude-3-haiku-20240307',
+          'claude-haiku-4-5-20251001',
           'gpt-4o-mini',
           'google/gemini-3.5-flash',
           'google/gemini-3.1-flash-lite',
@@ -749,6 +896,7 @@ export default function AIChat({ profile }: AIChatProps) {
       console.error(e);
       setToast({ message: 'Lỗi khi tạo phiên trò chuyện', type: 'error' });
     } finally {
+      isSendingRef.current = false;
       setIsGenerating(false);
     }
   };
@@ -815,7 +963,8 @@ export default function AIChat({ profile }: AIChatProps) {
         </div>
       ) : searchParams.get('tab') === 'chat-folders' ? (
         <ChatFolderGrid
-          personalFolders={personalFolders}
+          globalProjects={projects.filter((p: any) => p.type === 'WIP_GLOBAL')}
+          personalProjects={personalFolders}
           onCreateFolder={handleCreateFolder}
           onRenameFolder={handleRenameFolder}
           onDeleteFolder={handleDeleteFolder}
@@ -860,7 +1009,50 @@ export default function AIChat({ profile }: AIChatProps) {
           personalFolders={personalFolders}
           pendingKnowledgeProjectName={pendingKnowledgeProjectName}
           onClearPendingKnowledgeProjectName={() => setPendingKnowledgeProjectName(null)}
+          onSummarizeChat={handleSummarizeChat}
         />
+      )}
+
+      {isSummaryModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-3xs animate-in fade-in duration-200">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-2xl p-6 shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[80vh]">
+            <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center gap-1.5 shrink-0">
+              <span>📝</span> Tổng hợp nội dung hội thoại
+            </h3>
+            
+            <div className="flex-1 overflow-y-auto min-h-60 border border-slate-100 rounded-xl p-4 bg-slate-50 text-xs text-slate-700 leading-relaxed font-medium">
+              {isSummarizing ? (
+                <div className="flex flex-col items-center justify-center h-full py-20 space-y-3">
+                  <span className="w-6 h-6 border-2 border-markee-primary border-t-transparent rounded-full animate-spin" />
+                  <p className="text-slate-400 font-bold">Đang tổng hợp nội dung cuộc trò chuyện bằng AI...</p>
+                </div>
+              ) : (
+                <div className="prose prose-slate max-w-none text-xs whitespace-pre-wrap">
+                  {chatSummaryText || 'Không có nội dung tóm tắt.'}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 text-xs font-bold mt-4 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsSummaryModalOpen(false)}
+                className="px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl cursor-pointer"
+              >
+                Đóng
+              </button>
+               {!isSummarizing && chatSummaryText && (
+                <button
+                  type="button"
+                  onClick={handleSaveSummaryAsWip}
+                  className="px-4 py-2 bg-markee-primary hover:bg-markee-hover text-white rounded-xl cursor-pointer"
+                >
+                  Lưu vào Kho tri thức
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

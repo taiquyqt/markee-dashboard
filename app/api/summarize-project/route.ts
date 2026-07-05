@@ -1,22 +1,49 @@
 import { NextResponse } from "next/server";
 import { authenticateRequest, requireAdmin, AuthError } from "@/lib/api-auth";
+import { createOpenAI } from "@ai-sdk/openai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { generateText } from "ai";
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+function getModelInstance(modelName: string) {
+  const name = modelName.toLowerCase();
+
+  // 1. Nhóm Gemini
+  if (name.includes("gemini") || name.includes("google")) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    const google = createGoogleGenerativeAI({ apiKey });
+    const actualModel = modelName.startsWith("google/") ? modelName.replace("google/", "") : modelName;
+    return google(actualModel);
+  }
+
+  // 2. Model Auto (OpenRouter)
+  if (name.includes("auto") || name.includes("free") || name.includes("openrouter")) {
+    const apiKey = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY;
+    const openrouter = createOpenAI({
+      apiKey,
+      baseURL: "https://openrouter.ai/api/v1",
+    });
+    return openrouter(modelName);
+  }
+
+  // 3. Nhóm GPT & Claude (ShopAIKey)
+  const apiKey = process.env.NEXT_PUBLIC_SHOPAIKEY_API_KEY || process.env.SHOPAIKEY_API_KEY || process.env.OPENAI_API_KEY;
+  const shopaikey = createOpenAI({
+    apiKey,
+    baseURL: "https://api.shopaikey.com/v1",
+  });
+  return shopaikey(modelName);
+}
 
 export async function POST(req: Request) {
   try {
     const { user, supabase } = await authenticateRequest(req);
 
-    const { projectId } = await req.json();
+    const { projectId, model: requestedModel } = await req.json();
     if (!projectId) {
       return NextResponse.json({ error: "Missing projectId" }, { status: 400 });
     }
 
-    const { data: project, error: projectError } = await supabase
-      .from("projects")
-      .select("id, created_by")
-      .eq("id", projectId)
-      .single();
+    const { data: project, error: projectError } = await supabase.from("projects").select("id, created_by").eq("id", projectId).single();
 
     if (projectError || !project) {
       return NextResponse.json({ error: "Dự án không tồn tại" }, { status: 404 });
@@ -25,12 +52,7 @@ export async function POST(req: Request) {
     let hasAccess = project.created_by === user.email;
 
     if (!hasAccess) {
-      const { data: wipCount } = await supabase
-        .from("skill_library")
-        .select("id", { count: "exact", head: true })
-        .eq("project_id", projectId)
-        .eq("author_id", user.email)
-        .eq("skill_type", "wip");
+      const { data: wipCount } = await supabase.from("skill_library").select("id", { count: "exact", head: true }).eq("project_id", projectId).eq("author_id", user.email).eq("skill_type", "wip");
 
       hasAccess = (wipCount?.length ?? 0) > 0;
     }
@@ -48,11 +70,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Bạn không có quyền truy cập dự án này" }, { status: 403 });
     }
 
-    const { data: wipSkills, error: fetchError } = await supabase
-      .from("skill_library")
-      .select("title, markdown_content, author_id, session_tokens")
-      .eq("project_id", projectId)
-      .eq("skill_type", "wip");
+    const { data: wipSkills, error: fetchError } = await supabase.from("skill_library").select("title, markdown_content, author_id, session_tokens").eq("project_id", projectId).eq("skill_type", "wip");
 
     if (fetchError) {
       console.error("Error fetching WIP skills:", fetchError);
@@ -108,76 +126,29 @@ QUY TẮC:
   ]
 }`;
 
-    if (!GEMINI_API_KEY) {
-      return NextResponse.json({ error: "Server misconfiguration: missing GEMINI_API_KEY" }, { status: 500 });
-    }
-
-    let geminiResponse: Response;
+    const modelName = "google/gemini-3.5-flash";
+    let text = "";
     try {
-      geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": GEMINI_API_KEY,
-        },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: systemPrompt }] },
-          contents: [{ parts: [{ text: combinedContent }] }],
-          generationConfig: {
-            temperature: 0.2,
-            responseMimeType: "application/json",
-          },
-        }),
+      const modelInstance = getModelInstance(modelName);
+      const aiResponse = await generateText({
+        model: modelInstance as any,
+        system: systemPrompt,
+        prompt: combinedContent,
+        temperature: 0.2,
       });
-    } catch (networkError: unknown) {
-      console.error("Gemini API Network/Fetch Error:", networkError);
-      const message = networkError instanceof Error ? networkError.message : String(networkError);
-      return NextResponse.json({ error: `Lỗi kết nối mạng đến API Gemini: ${message}` }, { status: 503 });
-    }
-
-    if (!geminiResponse.ok) {
-      const errText = await geminiResponse.text();
-      console.error(`Gemini API error (Status ${geminiResponse.status}):`, errText);
-      let errMsg = `Lỗi kết nối API Gemini (Status: ${geminiResponse.status})`;
-      try {
-        const parsed = JSON.parse(errText);
-        if (parsed.error && parsed.error.message) {
-          errMsg += `: ${parsed.error.message}`;
-        }
-      } catch {
-        // Ignore JSON parsing errors for error text
-      }
-      return NextResponse.json({ error: errMsg }, { status: geminiResponse.status || 502 });
-    }
-
-    let geminiData: unknown;
-    try {
-      geminiData = await geminiResponse.json();
-    } catch (jsonError: unknown) {
-      console.error("Failed to parse Gemini response as JSON:", jsonError);
-      return NextResponse.json({ error: "Phản hồi từ Gemini không phải là JSON hợp lệ" }, { status: 502 });
+      text = aiResponse.text;
+    } catch (aiError: any) {
+      console.error("AI Generation Error in summarize-project:", aiError);
+      return NextResponse.json({ error: `Lỗi gọi API AI (${modelName}): ${aiError.message || aiError}` }, { status: 502 });
     }
 
     let resultJSON;
     try {
-      const typedData = geminiData as {
-        candidates?: {
-          content?: {
-            parts?: {
-              text?: string;
-            }[];
-          };
-        }[];
-      };
-      const rawText = typedData?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!rawText) {
-        throw new Error("Không tìm thấy text trong candidates");
-      }
-      const cleanJsonStr = rawText.replace(/```json\n?|\n?```/g, "").trim();
+      const cleanJsonStr = text.replace(/```json\n?|\n?```/g, "").trim();
       resultJSON = JSON.parse(cleanJsonStr);
     } catch (parseError) {
-      console.error("Error parsing Gemini response:", parseError, geminiData);
-      return NextResponse.json({ error: "Lỗi định dạng phản hồi AI từ Gemini" }, { status: 500 });
+      console.error("Error parsing AI response:", parseError, text);
+      return NextResponse.json({ error: "Lỗi định dạng phản hồi AI: " + text }, { status: 500 });
     }
 
     return NextResponse.json({
@@ -186,7 +157,7 @@ QUY TẮC:
       insights: resultJSON.insights || [],
       contributors,
       totalTokens,
-      model: "Auto-Summary (Gemini 2.5 Flash)",
+      model: `Auto-Summary (${modelName})`,
     });
   } catch (error) {
     if (error instanceof AuthError) {

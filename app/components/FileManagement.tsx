@@ -102,9 +102,8 @@ export default function FileManagement() {
   };
 
   // Get download link
-  const getDownloadUrl = (storagePath: string) => {
-    const { data } = supabase.storage.from('chat_attachments').getPublicUrl(storagePath);
-    return data?.publicUrl || '';
+  const getDownloadUrl = (storagePath: string, fileName: string) => {
+    return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/chat_attachments/${storagePath}?download=${fileName}`;
   };
 
   // Filtered files list based on search query
@@ -142,7 +141,7 @@ export default function FileManagement() {
       <section className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
         <div>
           <h1 className="text-lg font-bold text-markee-text">Quản lý File & Tài nguyên</h1>
-          <p className="text-xs text-markee-muted">Tập hợp tất cả các tệp tài liệu và hình ảnh được tải lên trong hệ thống chat.</p>
+          <p className="text-xs text-markee-muted">Tập hợp tất cả các tệp tài liệu được tải lên trong hệ thống chat.</p>
         </div>
         <button
           onClick={fetchFiles}
@@ -204,7 +203,7 @@ export default function FileManagement() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredFiles.map((file) => {
-                  const fileUrl = getDownloadUrl(file.storage_path);
+                  const fileUrl = getDownloadUrl(file.storage_path, file.file_name);
                   const isImg = isImage(file.file_name, file.mime_type);
 
                   // Resolve uploader info from in-memory users list

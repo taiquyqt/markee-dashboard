@@ -34,6 +34,9 @@ export interface SkillLibraryRow {
   likes_count: number | null;
   downloads_count: number | null;
   team_track?: string | null;
+  attached_file?: any;
+  department_id?: number;
+  team_id?: number;
 }
 
 export interface SkillCard extends SkillLibraryRow {
@@ -201,11 +204,28 @@ export function removeVietnameseTones(str: string | null | undefined): string {
     .toLowerCase();
 }
 
-export async function fetchApprovedSkills(page = 0, pageSize = DEFAULT_PAGE_SIZE, userEmail?: string, searchTerm = "", teamTrack = "", skillType = ""): Promise<PaginatedSkills> {
+export async function fetchApprovedSkills(
+  page = 0,
+  pageSize = DEFAULT_PAGE_SIZE,
+  userEmail?: string,
+  searchTerm = "",
+  teamTrack = "",
+  skillType = "",
+  departmentId?: number | null,
+  teamId?: number | null
+): Promise<PaginatedSkills> {
   const from = page * pageSize;
   const to = from + pageSize - 1;
 
-  let query = supabase.from("skill_library").select("id, created_at, title, markdown_content, category, author_id, status, skill_type, likes_count, downloads_count, team_track", { count: "exact" }).eq("status", "approved").not("skill_type", "ilike", "wip");
+  let query = supabase.from("skill_library").select("id, created_at, title, markdown_content, category, author_id, status, skill_type, likes_count, downloads_count, team_track, department_id, team_id", { count: "exact" }).eq("status", "approved").not("skill_type", "ilike", "wip");
+
+  if (departmentId !== undefined && departmentId !== null) {
+    query = query.eq("department_id", departmentId);
+  }
+
+  if (teamId !== undefined && teamId !== null) {
+    query = query.eq("team_id", teamId);
+  }
 
   if (skillType && skillType !== "Tất cả") {
     const dbType = skillType.toLowerCase();
@@ -327,7 +347,7 @@ export async function fetchTeamTracks(): Promise<string[]> {
 }
 
 export async function fetchMyWorkspaceSkills(email: string): Promise<SkillCard[]> {
-  const { data, error } = await supabase.from("skill_library").select("id, created_at, title, markdown_content, category, author_id, status, skill_type, likes_count, downloads_count, team_track").eq("author_id", email).not("skill_type", "ilike", "wip").order("created_at", { ascending: false });
+  const { data, error } = await supabase.from("skill_library").select("id, created_at, title, markdown_content, category, author_id, status, skill_type, likes_count, downloads_count, team_track, attached_file, department_id, team_id").eq("author_id", email).not("skill_type", "ilike", "wip").order("created_at", { ascending: false });
 
   if (error) {
     console.error("Error fetching workspace skills:", error);
@@ -602,6 +622,9 @@ export interface Project {
   master_summary?: string | null;
   last_summarized_at?: string | null;
   lastWipCreatedAt?: string | null;
+  type?: 'WIP_GLOBAL' | 'PERSONAL';
+  department_id?: number;
+  team_id?: number;
 }
 
 export interface AISession {
@@ -618,6 +641,9 @@ export interface AISession {
   tier: string | null;
   title?: string;
   team_track?: string | null;
+  attached_file?: any;
+  department_id?: number;
+  team_id?: number;
 }
 
 export async function fetchAllUsers(): Promise<AppUser[]> {
@@ -648,12 +674,22 @@ export async function updateUserRole(userId: number, role: UserRole) {
 export async function fetchProjects(
   userEmail?: string,
   isAdmin = false,
-  filterType?: 'WIP_GLOBAL' | 'PERSONAL'
+  filterType?: 'WIP_GLOBAL' | 'PERSONAL',
+  departmentId?: number | null,
+  teamId?: number | null
 ): Promise<Project[]> {
   let projectsQuery = supabase.from("projects").select("*").order("created_at", { ascending: false });
 
   if (filterType) {
     projectsQuery = projectsQuery.eq("type", filterType);
+  }
+
+  if (departmentId !== undefined && departmentId !== null) {
+    projectsQuery = projectsQuery.eq("department_id", departmentId);
+  }
+
+  if (teamId !== undefined && teamId !== null) {
+    projectsQuery = projectsQuery.eq("team_id", teamId);
   }
 
   if (!isAdmin && userEmail) {
@@ -1132,6 +1168,7 @@ export async function fetchProjectWIPsForUser(projectId: number, authorId: strin
     tier: "WIP",
     title: row.title,
     team_track: row.team_track,
+    attached_file: row.attached_file,
   }));
 
   const total = count || 0;
@@ -1165,6 +1202,7 @@ export async function fetchProjectWIPs(projectId: number, page = 0, pageSize = 2
     tier: "WIP",
     title: row.title,
     team_track: row.team_track,
+    attached_file: row.attached_file,
   }));
 
   const total = count || 0;
@@ -1200,6 +1238,7 @@ export async function fetchMyWIPs(email: string): Promise<AISession[]> {
     tier: "WIP",
     title: row.title,
     team_track: row.team_track,
+    attached_file: row.attached_file,
   }));
 }
 

@@ -1,11 +1,37 @@
 import { createOpenAI } from '@ai-sdk/openai';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { streamText } from 'ai';
 import { authenticateRequest, AuthError } from '@/lib/api-auth';
 
-const openai = createOpenAI({
-  apiKey: process.env.SHOPAIKEY_API_KEY,
-  baseURL: process.env.SHOPAIKEY_BASE_URL,
-});
+function getModelInstance(modelName: string) {
+  const name = modelName.toLowerCase();
+  
+  // 1. Nhóm Gemini
+  if (name.includes('gemini') || name.includes('google')) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    const google = createGoogleGenerativeAI({ apiKey });
+    const actualModel = modelName.startsWith('google/') ? modelName.replace('google/', '') : modelName;
+    return google(actualModel);
+  }
+
+  // 2. Model Auto (OpenRouter)
+  if (name.includes('auto') || name.includes('free') || name.includes('openrouter')) {
+    const apiKey = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY;
+    const openrouter = createOpenAI({
+      apiKey,
+      baseURL: 'https://openrouter.ai/api/v1',
+    });
+    return openrouter(modelName);
+  }
+
+  // 3. Nhóm GPT & Claude (ShopAIKey)
+  const apiKey = process.env.NEXT_PUBLIC_SHOPAIKEY_API_KEY || process.env.SHOPAIKEY_API_KEY || process.env.OPENAI_API_KEY;
+  const shopaikey = createOpenAI({
+    apiKey,
+    baseURL: 'https://api.shopaikey.com/v1',
+  });
+  return shopaikey(modelName);
+}
 
 const SYSTEM_PROMPT = `Bạn là Markee AI Assistant — trợ lý AI chuyên nghiệp của Markee AI Ops Center.
 
@@ -85,9 +111,10 @@ export async function POST(req: Request) {
     }
 
     const modelName = requestedModel || 'gpt-4o';
+    const modelInstance = getModelInstance(modelName);
 
     const result = streamText({
-      model: openai(modelName),
+      model: modelInstance as any,
       system: SYSTEM_PROMPT,
       messages,
       onFinish: async ({ text }) => {

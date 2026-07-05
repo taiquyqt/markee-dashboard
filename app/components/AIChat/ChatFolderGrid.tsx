@@ -11,18 +11,21 @@ interface FolderItem {
 }
 
 interface ChatFolderGridProps {
-  personalFolders: FolderItem[];
+  globalProjects: FolderItem[];
+  personalProjects: FolderItem[];
   onCreateFolder: (name: string) => Promise<void>;
   onRenameFolder: (id: number, newName: string) => Promise<void>;
   onDeleteFolder: (id: number) => Promise<void>;
 }
 
 export default function ChatFolderGrid({
-  personalFolders,
+  globalProjects,
+  personalProjects,
   onCreateFolder,
   onRenameFolder,
   onDeleteFolder,
 }: ChatFolderGridProps) {
+  const [activeTab, setActiveTab] = useState<'global' | 'personal'>('global');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'date'>('name');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -32,7 +35,9 @@ export default function ChatFolderGrid({
   const [folderNameInput, setFolderNameInput] = useState('');
   const [activeMenuId, setActiveMenuId] = useState<number | null>(null);
 
-  const filteredFolders = personalFolders
+  const currentFolders = activeTab === 'global' ? globalProjects : personalProjects;
+
+  const filteredFolders = currentFolders
     .filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()))
     .sort((a, b) => {
       if (sortBy === 'name') {
@@ -47,6 +52,7 @@ export default function ChatFolderGrid({
     await onCreateFolder(folderNameInput.trim());
     setFolderNameInput('');
     setIsCreateModalOpen(false);
+    setActiveTab('personal'); // Automatically select Personal tab to render the newly created folder
   };
 
   const handleEditSubmit = async (e: React.FormEvent) => {
@@ -73,7 +79,7 @@ export default function ChatFolderGrid({
           <h1 className="text-xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
             <span className="text-lg">📂</span> Dự án
           </h1>
-          <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Quản lý và sắp xếp các phiên hội thoại cá nhân của bạn</p>
+          <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Quản lý và sắp xếp các phiên hội thoại của bạn</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -100,12 +106,44 @@ export default function ChatFolderGrid({
 
       {/* Body container */}
       <div className="flex-1 overflow-y-auto p-8 space-y-6">
+        {/* Tabs */}
+        <div className="flex border-b border-slate-100 text-xs font-bold gap-4 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('global');
+              setActiveMenuId(null);
+            }}
+            className={`pb-3 border-b-2 transition-all cursor-pointer bg-transparent border-0 px-2 font-bold ${
+              activeTab === 'global'
+                ? 'border-markee-primary text-markee-primary font-extrabold'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Dự án chung ({globalProjects.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('personal');
+              setActiveMenuId(null);
+            }}
+            className={`pb-3 border-b-2 transition-all cursor-pointer bg-transparent border-0 px-2 font-bold ${
+              activeTab === 'personal'
+                ? 'border-markee-primary text-markee-primary font-extrabold'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Dự án cá nhân ({personalProjects.length})
+          </button>
+        </div>
+
         {/* Search Bar */}
         <div className="relative max-w-md">
           <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Tìm kiếm thư mục..."
+            placeholder={activeTab === 'global' ? "Tìm kiếm dự án chung..." : "Tìm kiếm dự án cá nhân..."}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-xs text-slate-800 bg-slate-50/30 focus:outline-none focus:border-slate-400 focus:bg-white font-medium transition-all"
@@ -117,12 +155,14 @@ export default function ChatFolderGrid({
           <div className="flex flex-col items-center justify-center py-20 border border-dashed border-slate-200 rounded-2xl bg-slate-50/30">
             <Folder className="w-10 h-10 text-slate-300 mb-3" />
             <p className="text-xs text-slate-400 font-bold">Không tìm thấy thư mục nào</p>
-            <button
-              onClick={() => setIsCreateModalOpen(true)}
-              className="mt-3 text-xs text-markee-primary font-bold hover:underline"
-            >
-              Tạo thư mục đầu tiên của bạn
-            </button>
+            {activeTab === 'personal' && (
+              <button
+                onClick={() => setIsCreateModalOpen(true)}
+                className="mt-3 text-xs text-markee-primary font-bold hover:underline"
+              >
+                Tạo thư mục đầu tiên của bạn
+              </button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -131,47 +171,49 @@ export default function ChatFolderGrid({
                 key={folder.id}
                 className="group relative border border-slate-200 hover:border-slate-350 rounded-2xl p-5 bg-white hover:bg-slate-50/30 shadow-3xs hover:shadow-xs transition-all flex flex-col justify-between min-h-30 cursor-pointer"
               >
-                {/* 3-dots actions */}
-                <div className="absolute top-4 right-4" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    type="button"
-                    onClick={() => setActiveMenuId(activeMenuId === folder.id ? null : folder.id)}
-                    className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors border-0 bg-transparent cursor-pointer"
-                  >
-                    <MoreVertical className="w-3.5 h-3.5" />
-                  </button>
+                {/* 3-dots actions (Only for personal tab) */}
+                {activeTab === 'personal' && (
+                  <div className="absolute top-4 right-4" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={() => setActiveMenuId(activeMenuId === folder.id ? null : folder.id)}
+                      className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors border-0 bg-transparent cursor-pointer"
+                    >
+                      <MoreVertical className="w-3.5 h-3.5" />
+                    </button>
 
-                  {activeMenuId === folder.id && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setActiveMenuId(null)} />
-                      <div className="absolute right-0 mt-1 z-50 w-28 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 text-xs text-slate-700 font-semibold animate-in fade-in slide-in-from-top-1 duration-100">
-                        <button
-                          onClick={() => {
-                            setSelectedFolder(folder);
-                            setFolderNameInput(folder.name);
-                            setIsEditModalOpen(true);
-                            setActiveMenuId(null);
-                          }}
-                          className="w-full text-left px-3.5 py-1.5 hover:bg-slate-50 transition-colors flex items-center gap-1.5 cursor-pointer bg-transparent border-0 font-semibold text-slate-700"
-                        >
-                          <Edit3 className="w-3.5 h-3.5 text-slate-500" />
-                          <span>Đổi tên</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSelectedFolder(folder);
-                            setIsDeleteModalOpen(true);
-                            setActiveMenuId(null);
-                          }}
-                          className="w-full text-left px-3.5 py-1.5 hover:bg-red-50 text-red-650 hover:text-red-755 transition-colors flex items-center gap-1.5 cursor-pointer bg-transparent border-0 font-semibold text-red-650"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                          <span>Xóa</span>
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
+                    {activeMenuId === folder.id && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setActiveMenuId(null)} />
+                        <div className="absolute right-0 mt-1 z-50 w-28 bg-white border border-slate-200 rounded-xl shadow-lg py-1.5 text-xs text-slate-700 font-semibold animate-in fade-in slide-in-from-top-1 duration-100">
+                          <button
+                            onClick={() => {
+                              setSelectedFolder(folder);
+                              setFolderNameInput(folder.name);
+                              setIsEditModalOpen(true);
+                              setActiveMenuId(null);
+                            }}
+                            className="w-full text-left px-3.5 py-1.5 hover:bg-slate-50 transition-colors flex items-center gap-1.5 cursor-pointer bg-transparent border-0 font-semibold text-slate-700"
+                          >
+                            <Edit3 className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Đổi tên</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedFolder(folder);
+                              setIsDeleteModalOpen(true);
+                              setActiveMenuId(null);
+                            }}
+                            className="w-full text-left px-3.5 py-1.5 hover:bg-red-50 text-red-650 hover:text-red-755 transition-colors flex items-center gap-1.5 cursor-pointer bg-transparent border-0 font-semibold text-red-650"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                            <span>Xóa</span>
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
 
                 {/* Card Link */}
                 <Link

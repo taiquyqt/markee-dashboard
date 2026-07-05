@@ -90,6 +90,14 @@ function formatCurrency(value: number) {
   return new Intl.NumberFormat('vi-VN').format(value) + ' VNĐ';
 }
 
+function formatWipFileSize(bytes?: number | null) {
+  if (!bytes) return '0 KB';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
 function formatLicenseCurrency(value: number, currency: string | null | undefined) {
   if (currency === 'USD') {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
@@ -620,6 +628,25 @@ function UserDashboard({
 
   const [selectedTrack, setSelectedTrack] = useState('Tất cả');
   const [selectedType, setSelectedType] = useState('Tất cả');
+  const [departments, setDepartments] = useState<{ id: number; name: string }[]>([]);
+  const [teams, setTeams] = useState<{ id: number; name: string; department_id: number }[]>([]);
+  const [selectedDeptId, setSelectedDeptId] = useState<number | null>(null);
+  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
+
+  useEffect(() => {
+    async function loadDeptsAndTeams() {
+      try {
+        const { data: deptData } = await supabase.from('departments').select('id, name');
+        setDepartments(deptData || []);
+        const { data: teamData } = await supabase.from('teams').select('id, name, department_id');
+        setTeams(teamData || []);
+      } catch (e) {
+        console.error('Error fetching depts/teams:', e);
+      }
+    }
+    loadDeptsAndTeams();
+  }, []);
+
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [previewSkill, setPreviewSkill] = useState<SkillCard | null>(null);
 
@@ -655,7 +682,7 @@ function UserDashboard({
 
       if (isLibraryOnly) {
         const [skills, libCounts] = await Promise.all([
-          fetchApprovedSkills(page, PAGE_SIZE, profile.email, debouncedSearchTerm, dbTrack, selectedType),
+          fetchApprovedSkills(page, PAGE_SIZE, profile.email, debouncedSearchTerm, dbTrack, selectedType, selectedDeptId, selectedTeamId),
           countsPromise,
         ]);
         setLibrary(skills);
@@ -664,11 +691,11 @@ function UserDashboard({
       }
 
       const [skills, trending, workspace, userWips, allProjects, libCounts] = await Promise.all([
-        fetchApprovedSkills(page, PAGE_SIZE, profile.email, debouncedSearchTerm, dbTrack, selectedType),
+        fetchApprovedSkills(page, PAGE_SIZE, profile.email, debouncedSearchTerm, dbTrack, selectedType, selectedDeptId, selectedTeamId),
         fetchTrendingSkills(5, profile.email),
         fetchMyWorkspaceSkills(profile.email),
         fetchMyWIPs(profile.email),
-        fetchProjects(undefined, undefined, 'WIP_GLOBAL'),
+        fetchProjects(undefined, false, 'WIP_GLOBAL', selectedDeptId, selectedTeamId),
         countsPromise,
       ]);
 
@@ -685,7 +712,7 @@ function UserDashboard({
 
   useEffect(() => {
     loadInitialData();
-  }, [profile.email, refreshKey, page, debouncedSearchTerm, isLibraryOnly, selectedTrack, selectedType, activeView]);
+  }, [profile.email, refreshKey, page, debouncedSearchTerm, isLibraryOnly, selectedTrack, selectedType, activeView, selectedDeptId, selectedTeamId]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -747,42 +774,47 @@ function UserDashboard({
             </div>
           </div>
 
-          {/* Nhóm 2 - PHÒNG BAN */}
-          <div>
-            <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 mb-2.5">Phòng ban</h3>
-            <div className="flex flex-col gap-1">
-              {[
-                "Tất cả",
-                "Track 1: SI Delivery (System/SOC)",
-                "Track 2: Marketing (SEO/Ads)",
-                "Track 3: Dev + DevOps (SaaS)",
-                "Track 4: AI Team (Products)",
-                "Track 5: Sales (Closing)",
-                "Khác",
-              ].map((track) => {
-                const isActive = selectedTrack === track;
-                const dbTrack = mapTrackToDbValue(track);
-                const count = track === "Tất cả" ? counts.total : (counts.byTrack[dbTrack] || 0);
-                return (
-                  <button
-                    key={track}
-                    type="button"
-                    onClick={() => {
-                      setPage(0);
-                      setSelectedTrack(track);
-                    }}
-                    className={`text-left px-3 py-2 rounded-lg text-xs transition-all cursor-pointer flex items-center justify-between w-full ${isActive
-                        ? "font-bold text-markee-primary bg-red-50"
-                        : "text-gray-500 hover:text-markee-primary hover:bg-gray-50"
-                      }`}
-                  >
-                    <span className="truncate mr-2">{track}</span>
-                    <span className="ml-auto bg-slate-100 text-slate-500 text-[10px] font-medium py-0.5 px-2 rounded-full shrink-0">
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
+          {/* Nhóm 2 - PHÒNG BAN & TEAM */}
+          <div className="space-y-4 pt-4 border-t border-gray-100">
+            <div className="space-y-1.5">
+              <label htmlFor="dept-select" className="text-[11px] font-bold uppercase tracking-wider text-gray-400 block">Phòng ban</label>
+              <select
+                id="dept-select"
+                value={selectedDeptId || ''}
+                onChange={(e) => {
+                  const val = e.target.value ? Number(e.target.value) : null;
+                  setSelectedDeptId(val);
+                  setSelectedTeamId(null);
+                  setPage(0);
+                }}
+                className="w-full rounded-lg border border-markee-border bg-white px-3 py-2 text-xs font-semibold text-markee-text focus:border-markee-primary outline-none transition-colors cursor-pointer"
+              >
+                <option value="">Tất cả phòng ban</option>
+                {departments.map((dept) => (
+                  <option key={dept.id} value={dept.id}>{dept.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label htmlFor="team-select" className="text-[11px] font-bold uppercase tracking-wider text-gray-400 block">Team</label>
+              <select
+                id="team-select"
+                value={selectedTeamId || ''}
+                onChange={(e) => {
+                  const val = e.target.value ? Number(e.target.value) : null;
+                  setSelectedTeamId(val);
+                  setPage(0);
+                }}
+                className="w-full rounded-lg border border-markee-border bg-white px-3 py-2 text-xs font-semibold text-markee-text focus:border-markee-primary outline-none transition-colors cursor-pointer"
+              >
+                <option value="">Tất cả team</option>
+                {teams
+                  .filter(t => selectedDeptId === null || t.department_id === selectedDeptId)
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+              </select>
             </div>
           </div>
         </aside>
@@ -901,6 +933,18 @@ function UserDashboard({
                       {displayedWips.map((wip) => {
                         const isDeleting = deletingWipIds.includes(wip.id);
                         const project = projects.find(p => p.id === wip.project_id);
+                        let parsedAttachedFile = null;
+                        if (wip.attached_file) {
+                          if (typeof wip.attached_file === 'object') {
+                            parsedAttachedFile = wip.attached_file;
+                          } else if (typeof wip.attached_file === 'string') {
+                            try {
+                              parsedAttachedFile = JSON.parse(wip.attached_file);
+                            } catch (e) {
+                              console.error('Error parsing attached_file in timeline:', e);
+                            }
+                          }
+                        }
                         return (
                           <div
                             key={wip.id}
@@ -967,6 +1011,29 @@ function UserDashboard({
                               <div className="mt-3.5 p-3 rounded-lg bg-markee-bg text-markee-text text-xs font-mono line-clamp-4 overflow-hidden text-ellipsis whitespace-pre-wrap leading-relaxed border border-markee-border/60">
                                 {wip.prompt_content ? wip.prompt_content : 'Không có nội dung'}
                               </div>
+
+                              {parsedAttachedFile?.storage_path && (
+                                <div className="mt-3 bg-slate-50 border border-slate-100 rounded-lg p-2.5 flex items-center justify-between gap-3 text-xs">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="text-base shrink-0">📎</span>
+                                    <span className="font-semibold text-slate-700 truncate" title={parsedAttachedFile.file_name}>
+                                      {parsedAttachedFile.file_name}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 shrink-0 font-medium">
+                                      ({formatWipFileSize(parsedAttachedFile.size_bytes)})
+                                    </span>
+                                  </div>
+                                  <a
+                                    href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/chat_attachments/${parsedAttachedFile.storage_path}?download=${parsedAttachedFile.file_name}`}
+                                    download={parsedAttachedFile.file_name}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-200 text-markee-primary hover:text-red-700 font-bold rounded text-[11px] transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
+                                  >
+                                    Tải xuống
+                                  </a>
+                                </div>
+                              )}
                             </div>
 
                             <div className="border-t border-markee-border/60 mt-4 pt-3 flex items-center justify-between text-[11px] text-markee-muted">
@@ -2077,7 +2144,7 @@ export default function RoleDashboard() {
           )}
 
           {activeTab === 'knowledge_hub' && (
-            <KnowledgeHubDashboard setActiveTab={setActiveTab} />
+            <KnowledgeHubDashboard setActiveTab={setActiveTab} profile={profile} />
           )}
 
           {activeTab === 'quan-ly-file' && (
@@ -3948,7 +4015,7 @@ function MyAssetsView({ profile }: { profile: UserProfile }) {
 
       {/* Delete Confirmation Modal */}
       {deletingLicense && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
           <div className="bg-white border border-markee-border rounded-xl shadow-2xl max-w-sm w-full p-6 space-y-4">
             <div>
               <h2 className="text-sm font-bold text-markee-text">Xác nhận xóa tài khoản</h2>
@@ -4004,34 +4071,40 @@ interface SummaryItem {
   timestamp?: string;
 }
 
-interface FlattenedSummary {
-  projectId: number;
-  projectName: string;
-  title: string;
-  insights: string[];
-  contributors: string;
-  totalTokens: number;
-  model: string;
-  timestamp: string;
-}
-
-function KnowledgeHubDashboard({ setActiveTab }: { setActiveTab: (tab: 'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file') => void }) {
+function KnowledgeHubDashboard({
+  setActiveTab,
+  profile
+}: {
+  setActiveTab: (tab: 'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file') => void;
+  profile: UserProfile;
+}) {
   const [stats, setStats] = useState<CurationStats>({ rawSessions: 0, wipDrafts: 0, knowledgeHub: 0 });
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedProjectFilter, setSelectedProjectFilter] = useState('Tất cả');
-  const [selectedSummary, setSelectedSummary] = useState<FlattenedSummary | null>(null);
+  const [selectedHubProject, setSelectedHubProject] = useState<Project | null>(null);
 
   async function loadData() {
     setLoading(true);
     try {
-      const [curationStats, allProjects] = await Promise.all([
-        fetchCurationStats(),
-        fetchProjects(undefined, undefined, 'WIP_GLOBAL')
-      ]);
+      const curationStats = await fetchCurationStats();
       setStats(curationStats);
-      setProjects(allProjects);
+
+      // Fetch projects of type WIP_GLOBAL and PERSONAL
+      const { data: projectsData, error: projectsError } = await supabase
+        .from("projects")
+        .select("*")
+        .in("type", ["WIP_GLOBAL", "PERSONAL"])
+        .order("created_at", { ascending: false });
+
+      if (projectsError) throw projectsError;
+
+      // Filter to keep only GLOBAL projects or PERSONAL projects created by this user
+      const filtered = (projectsData || []).filter(
+        p => p.type === 'WIP_GLOBAL' || (p.type === 'PERSONAL' && p.created_by === profile.email)
+      );
+
+      setProjects(filtered);
     } catch (e) {
       console.error(e);
     } finally {
@@ -4043,44 +4116,66 @@ function KnowledgeHubDashboard({ setActiveTab }: { setActiveTab: (tab: 'overview
     loadData();
   }, []);
 
-  const flattenedSummaries = useMemo(() => {
-    const list: FlattenedSummary[] = [];
-    projects.forEach(p => {
-      if (p.master_summary) {
-        try {
-          const parsed = JSON.parse(p.master_summary) as SummaryItem[];
-          if (Array.isArray(parsed)) {
-            parsed.forEach((item: SummaryItem) => {
-              list.push({
-                projectId: p.id,
-                projectName: p.name,
-                title: item.title,
-                insights: item.insights || [],
-                contributors: item.contributors || 'Hệ thống',
-                totalTokens: item.totalTokens || 0,
-                model: item.model || 'Gemini 3.5 Flash',
-                timestamp: item.timestamp || p.created_at
-              });
-            });
-          }
-        } catch (e) {
-          console.error(e);
+  const projectsWithSummaries = useMemo(() => {
+    return projects.filter(p => {
+      if (!p.master_summary) return false;
+      try {
+        const parsed = JSON.parse(p.master_summary) as SummaryItem[];
+        if (!Array.isArray(parsed) || parsed.length === 0) return false;
+        if (p.type === 'PERSONAL') {
+          // Check if at least one summary belongs to this user
+          return parsed.some((item: SummaryItem) => item.contributors?.toLowerCase() === profile.email?.toLowerCase());
         }
+        return true;
+      } catch (e) {
+        return false;
       }
     });
-    return list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [projects]);
+  }, [projects, profile.email]);
 
-  const filteredSummaries = useMemo(() => {
-    const cleanSearch = removeVietnameseTones(searchTerm);
-    return flattenedSummaries.filter(s => {
-      const cleanTitle = removeVietnameseTones(s.title);
-      const matchSearch = cleanTitle.includes(cleanSearch) ||
-        s.insights.some(i => removeVietnameseTones(i).includes(cleanSearch));
-      const matchProject = selectedProjectFilter === 'Tất cả' || s.projectName === selectedProjectFilter;
-      return matchSearch && matchProject;
+  const filteredProjects = useMemo(() => {
+    const cleanSearch = removeVietnameseTones(searchTerm).toLowerCase();
+    if (!cleanSearch) return projectsWithSummaries;
+    return projectsWithSummaries.filter(p => {
+      if (removeVietnameseTones(p.name).toLowerCase().includes(cleanSearch)) return true;
+      try {
+        let parsed = JSON.parse(p.master_summary || '[]') as SummaryItem[];
+        if (p.type === 'PERSONAL') {
+          parsed = parsed.filter((item: SummaryItem) => item.contributors?.toLowerCase() === profile.email?.toLowerCase());
+        }
+        return parsed.some((item: SummaryItem) =>
+          removeVietnameseTones(item.title).toLowerCase().includes(cleanSearch) ||
+          (item.insights || []).some(insight => removeVietnameseTones(insight).toLowerCase().includes(cleanSearch))
+        );
+      } catch (e) {
+        return false;
+      }
     });
-  }, [flattenedSummaries, searchTerm, selectedProjectFilter]);
+  }, [projectsWithSummaries, searchTerm, profile.email]);
+
+  const summariesInProject = useMemo(() => {
+    if (!selectedHubProject || !selectedHubProject.master_summary) return [];
+    try {
+      let parsed = JSON.parse(selectedHubProject.master_summary) as SummaryItem[];
+      
+      // Filter personal project summaries to only show summaries created by this user
+      if (selectedHubProject.type === 'PERSONAL') {
+        parsed = parsed.filter((item: SummaryItem) => item.contributors?.toLowerCase() === profile.email?.toLowerCase());
+      }
+
+      // Sort descending by timestamp
+      parsed.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+
+      const cleanSearch = removeVietnameseTones(searchTerm).toLowerCase();
+      if (!cleanSearch) return parsed;
+      return parsed.filter((item: SummaryItem) =>
+        removeVietnameseTones(item.title).toLowerCase().includes(cleanSearch) ||
+        (item.insights || []).some(insight => removeVietnameseTones(insight).toLowerCase().includes(cleanSearch))
+      );
+    } catch (e) {
+      return [];
+    }
+  }, [selectedHubProject, searchTerm, profile.email]);
 
   return (
     <main className="mx-auto max-w-7xl space-y-5 p-5">
@@ -4091,21 +4186,16 @@ function KnowledgeHubDashboard({ setActiveTab }: { setActiveTab: (tab: 'overview
 
       {/* Curation Pipeline Stats */}
       <section className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full mb-8">
-        {/* Thẻ 1: Nhật ký AI thô */}
         <div className="bg-white border border-slate-200 border-l-4 border-l-red-600 rounded-lg shadow-sm p-6 flex flex-col justify-center text-left">
           <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">Nhật ký AI thô</div>
           <div className="text-3xl font-bold text-markee-text mt-2">{stats.rawSessions}</div>
           <div className="text-sm text-gray-400 mt-1">Dữ liệu từ extension</div>
         </div>
-
-        {/* Thẻ 2: Bản nháp WIP */}
         <div className="bg-white border border-slate-200 border-l-4 border-l-blue-600 rounded-lg shadow-sm p-6 flex flex-col justify-center text-left">
           <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">Bản nháp WIP</div>
           <div className="text-3xl font-bold text-markee-text mt-2">{stats.wipDrafts}</div>
           <div className="text-sm text-gray-400 mt-1">Đang chờ tổng hợp</div>
         </div>
-
-        {/* Thẻ 3: Trung tâm tri thức */}
         <div className="bg-white border border-slate-200 border-l-4 border-l-emerald-600 rounded-lg shadow-sm p-6 flex flex-col justify-center text-left">
           <div className="text-xs font-bold text-gray-500 uppercase tracking-wider">Trung tâm tri thức</div>
           <div className="text-3xl font-bold text-markee-text mt-2">{stats.knowledgeHub}</div>
@@ -4115,194 +4205,165 @@ function KnowledgeHubDashboard({ setActiveTab }: { setActiveTab: (tab: 'overview
 
       {loading ? (
         <div className="text-center py-10 text-sm text-markee-sub">Đang tải dữ liệu Kho Tri thức...</div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Cột trái: Các bộ lọc */}
-          <aside className="lg:col-span-1 bg-white p-5 rounded-xl border border-markee-border shadow-xs space-y-4 self-start">
-            <h3 className="text-xs font-bold text-markee-text uppercase tracking-wider border-b border-gray-100 pb-2">Bộ lọc</h3>
+      ) : selectedHubProject === null ? (
+        <div className="space-y-6">
+          {/* Search Bar */}
+          <div className="relative">
+            <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-markee-muted">
+              <Search className="w-4 h-4" />
+            </span>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Tìm kiếm dự án hoặc nội dung tri thức..."
+              className="w-full pl-9 pr-4 py-2.5 text-xs border border-markee-border rounded-xl bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary placeholder:text-markee-muted shadow-2xs"
+            />
+          </div>
 
-            <div className="space-y-1.5">
-              <label htmlFor="projectFilterSelect" className="block text-xs font-semibold text-markee-text">Dự án</label>
-              <select
-                id="projectFilterSelect"
-                value={selectedProjectFilter}
-                onChange={(e) => setSelectedProjectFilter(e.target.value)}
-                className="w-full rounded-lg border border-markee-border bg-white px-3 py-2 text-xs font-medium text-markee-text focus:border-markee-primary outline-none transition-colors cursor-pointer"
-              >
-                <option value="Tất cả">Tất cả dự án</option>
-                {projects.map(p => (
-                  <option key={p.id} value={p.name}>{p.name}</option>
-                ))}
-              </select>
-            </div>
+          {/* Grid of Projects */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredProjects.map(project => {
+              let parsedCount = 0;
+              try {
+                let parsed: SummaryItem[] = JSON.parse(project.master_summary || '[]');
+                if (project.type === 'PERSONAL') {
+                  parsed = parsed.filter((item: SummaryItem) => item.contributors?.toLowerCase() === profile.email?.toLowerCase());
+                }
+                parsedCount = Array.isArray(parsed) ? parsed.length : 0;
+              } catch (e) {
+                // Ignore
+              }
 
-            {/* Only project filter remains here */}
-          </aside>
-
-          {/* Phần chính: Search & Cards */}
-          <section className="lg:col-span-3 space-y-4">
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-markee-muted">
-                <Search className="w-4 h-4" />
-              </span>
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Tìm kiếm tiêu đề hoặc nội dung tri thức..."
-                className="w-full pl-9 pr-4 py-2.5 text-xs border border-markee-border rounded-xl bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary placeholder:text-markee-muted shadow-2xs"
-              />
-            </div>
-
-            <div className="space-y-4">
-              {filteredSummaries.map((summary, idx) => {
-                const snippet = summary.insights.slice(0, 2).join('; ');
-                return (
-                  <div
-                    key={idx}
-                    onClick={() => setSelectedSummary(summary)}
-                    className="bg-white border border-gray-200 rounded-xl p-5 shadow-2xs hover:shadow-sm hover:border-markee-primary/40 cursor-pointer transition-all space-y-2 flex flex-col justify-between"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <h3 className="font-bold text-markee-text text-sm md:text-base hover:text-markee-primary transition-colors">
-                        {summary.title}
-                      </h3>
-                      <span className="text-[10px] text-markee-muted bg-gray-50 border border-gray-150 px-2 py-0.5 rounded-sm font-semibold shrink-0">
-                        {getRelativeTime(summary.timestamp)}
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-markee-muted line-clamp-3 leading-relaxed">
-                      {snippet || 'Chưa có nội dung tóm tắt chi tiết.'}
+              return (
+                <div
+                  key={project.id}
+                  onClick={() => { setSelectedHubProject(project); setSearchTerm(''); }}
+                  className="bg-white border border-slate-200 hover:border-markee-primary/45 rounded-2xl p-6 shadow-3xs hover:shadow-xs transition-all flex flex-col justify-between min-h-40 cursor-pointer group"
+                >
+                  <div>
+                    <span className="text-2xl mb-3 block">📁</span>
+                    <h3 className="font-bold text-slate-800 text-sm md:text-base mb-1 truncate group-hover:text-markee-primary">
+                      {project.name}
+                    </h3>
+                    <p className="text-xs text-slate-400 font-semibold mb-4">
+                      {parsedCount} bản tóm tắt tri thức
                     </p>
-
-                    <div className="pt-3 border-t border-gray-100 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-markee-muted justify-between">
-                      <div className="flex flex-wrap gap-x-4 gap-y-1">
-                        <div className="flex items-center gap-1">
-                          <span className="font-bold text-markee-text">Dự án:</span>
-                          <span className="text-markee-primary font-semibold">{summary.projectName}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="font-bold text-markee-text">Nguồn:</span>
-                          <span>{summary.contributors}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="font-bold text-markee-text">Công cụ:</span>
-                          <span>{summary.model}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedSummary(summary)}
-                          className="bg-markee-primary/10 hover:bg-markee-primary/20 text-markee-primary font-bold px-2.5 py-1 rounded-lg transition-all border-0 cursor-pointer text-[10px] shadow-3xs"
-                        >
-                          Xem chi tiết →
-                        </button>
-                      </div>
-                    </div>
                   </div>
-                );
-              })}
-
-              {filteredSummaries.length === 0 && (
-                <div className="bg-white rounded-xl border border-markee-border p-8 text-center text-markee-sub text-xs">
-                  Không tìm thấy bản tóm tắt tri thức nào phù hợp với bộ lọc/tìm kiếm.
+                  <div className="border-t border-slate-100 pt-3 flex items-center justify-between text-[11px] text-slate-500 font-medium">
+                    <span>Cập nhật mới đây</span>
+                    <span className="text-markee-primary font-bold group-hover:underline flex items-center gap-0.5">
+                      Xem chi tiết &rarr;
+                    </span>
+                  </div>
                 </div>
-              )}
+              );
+            })}
+          </div>
+
+          {filteredProjects.length === 0 && (
+            <div className="bg-white rounded-xl border border-markee-border p-8 text-center text-markee-sub text-xs">
+              Không tìm thấy dự án tri thức nào phù hợp.
             </div>
-          </section>
+          )}
         </div>
-      )}
+      ) : (
+        <div className="space-y-6">
+          {/* Back button */}
+          <button
+            type="button"
+            onClick={() => { setSelectedHubProject(null); setSearchTerm(''); }}
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 transition-colors font-bold cursor-pointer mb-2 bg-transparent border-0"
+          >
+            &larr; Quay lại danh sách dự án
+          </button>
 
-      {/* Modal chi tiết Master Summary */}
-      {selectedSummary && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="bg-white border border-markee-border rounded-xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[85vh]">
-            <div className="border-b border-markee-border px-6 py-4 bg-markee-bg/10 flex items-center justify-between shrink-0">
-              <h3 className="text-base font-bold text-markee-text truncate max-w-[85%]" title={selectedSummary.title}>
-                {selectedSummary.title}
-              </h3>
-              <button
-                type="button"
-                onClick={() => setSelectedSummary(null)}
-                className="text-markee-muted hover:text-markee-text transition-colors p-1 cursor-pointer font-bold border-0 bg-transparent"
-              >
-                ✕
-              </button>
-            </div>
+          {/* Project header details */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6">
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <span>📂</span> {selectedHubProject.name}
+            </h2>
+            <p className="text-xs text-slate-400 font-semibold mt-1">
+              Dự án này chứa {summariesInProject.length} bản tóm tắt tri thức.
+            </p>
+          </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-5">
-              <div className="space-y-4">
-                <div>
-                  <h4 className="text-xs font-bold text-markee-muted uppercase tracking-wider mb-1">Dự án</h4>
-                  <p className="text-sm font-bold text-markee-primary">{selectedSummary.projectName}</p>
+          {/* Search bar inside project */}
+          <div className="relative">
+            <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-markee-muted">
+              <Search className="w-4 h-4" />
+            </span>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Tìm kiếm bản tóm tắt trong dự án này..."
+              className="w-full pl-9 pr-4 py-2.5 text-xs border border-markee-border rounded-xl bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary placeholder:text-markee-muted shadow-2xs"
+            />
+          </div>
+
+          {/* List of Summaries */}
+          <div className="space-y-4">
+            {summariesInProject.map((summary, idx) => (
+              <div key={idx} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-3xs space-y-4 flex flex-col justify-between">
+                <div className="flex items-start justify-between gap-3">
+                  <h3 className="font-bold text-markee-text text-sm md:text-base">
+                    {summary.title}
+                  </h3>
+                  <span className="text-[10px] text-markee-muted bg-gray-55 bg-gray-50 border border-gray-150 px-2 py-0.5 rounded-sm font-semibold shrink-0">
+                    {getRelativeTime(summary.timestamp || selectedHubProject.created_at)}
+                  </span>
                 </div>
 
-                <div>
-                  <h4 className="text-xs font-bold text-markee-muted uppercase tracking-wider mb-2">Insight cốt lõi</h4>
-                  <div className="text-sm text-markee-text whitespace-pre-wrap leading-relaxed bg-slate-50 border border-slate-200 rounded-xl p-4 max-h-[40vh] overflow-y-auto font-medium">
-                    {selectedSummary.insights.map((insight) => `- ${insight}`).join('\n')}
+                <div className="space-y-2">
+                  <h4 className="text-[10px] font-bold text-markee-muted uppercase tracking-wider">Insight cốt lõi</h4>
+                  <div className="text-xs text-markee-text whitespace-pre-wrap leading-relaxed bg-slate-50 border border-slate-200 rounded-xl p-4 max-h-[30vh] overflow-y-auto font-medium">
+                    {(summary.insights || []).map((insight) => `- ${insight}`).join('\n')}
                   </div>
                 </div>
 
-                {/* Horizontal Meta Info */}
-                <div className="pt-4 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-                  <div className="bg-gray-50 border border-gray-150 p-2.5 rounded-lg">
-                    <div className="font-bold text-markee-muted uppercase tracking-wider text-[9px] mb-1">Nguồn</div>
-                    <div className="text-markee-text truncate font-semibold" title={selectedSummary.contributors}>
-                      {selectedSummary.contributors}
+                <div className="pt-3 border-t border-gray-100 flex flex-wrap items-center gap-x-4 gap-y-2 text-[10px] text-markee-muted justify-between">
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    <div className="flex items-center gap-1">
+                      <span className="font-bold text-markee-text">Nguồn:</span>
+                      <span>{summary.contributors || 'Hệ thống'}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="font-bold text-markee-text">Công cụ:</span>
+                      <span>{summary.model || 'Gemini 3.5 Flash'}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="font-bold text-markee-text">Token:</span>
+                      <span>{(summary.totalTokens || 0).toLocaleString()} tokens</span>
                     </div>
                   </div>
-                  <div className="bg-gray-50 border border-gray-150 p-2.5 rounded-lg">
-                    <div className="font-bold text-markee-muted uppercase tracking-wider text-[9px] mb-1">Công cụ</div>
-                    <div className="text-markee-text truncate font-semibold" title={selectedSummary.model}>
-                      {selectedSummary.model}
-                    </div>
-                  </div>
-                  <div className="bg-gray-50 border border-gray-150 p-2.5 rounded-lg">
-                    <div className="font-bold text-markee-muted uppercase tracking-wider text-[9px] mb-1">Số Token</div>
-                    <div className="text-markee-text font-semibold">
-                      {selectedSummary.totalTokens?.toLocaleString()} tokens
-                    </div>
-                  </div>
-                  <div className="bg-gray-50 border border-gray-150 p-2.5 rounded-lg">
-                    <div className="font-bold text-markee-muted uppercase tracking-wider text-[9px] mb-1">Thời gian</div>
-                    <div className="text-markee-text font-semibold">
-                      {getRelativeTime(selectedSummary.timestamp)}
-                    </div>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const summaryContent = (summary.insights || []).map((i: string) => `- ${i}`).join('\n');
+                      const payload = {
+                        id: summary.title + (summary.timestamp || selectedHubProject.created_at),
+                        title: summary.title,
+                        content: summaryContent,
+                        projectName: selectedHubProject.name,
+                        projectId: selectedHubProject.id
+                      };
+                      sessionStorage.setItem('markee_pending_knowledge', JSON.stringify(payload));
+                      setActiveTab('ai_chat');
+                    }}
+                    className="bg-markee-primary hover:bg-markee-hover text-white px-3.5 py-2 rounded-xl transition-all text-xs font-bold cursor-pointer border-0 shadow-3xs flex items-center gap-1"
+                  >
+                    🪄 Chat với bản này
+                  </button>
                 </div>
               </div>
-            </div>
+            ))}
 
-            <div className="border-t border-markee-border px-6 py-3.5 flex justify-end gap-3 bg-markee-bg/10 shrink-0">
-              <button
-                type="button"
-                onClick={() => setSelectedSummary(null)}
-                className="px-4 py-2 border border-markee-border bg-white text-markee-text hover:bg-markee-bg rounded-lg transition-colors text-xs font-semibold cursor-pointer"
-              >
-                Đóng
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const summaryContent = selectedSummary.insights.map(i => `- ${i}`).join('\n');
-                  const payload = {
-                    id: selectedSummary.title + selectedSummary.timestamp,
-                    title: selectedSummary.title,
-                    content: summaryContent,
-                    projectName: selectedSummary.projectName
-                  };
-                  sessionStorage.setItem('markee_pending_knowledge', JSON.stringify(payload));
-                  setSelectedSummary(null);
-                  setActiveTab('ai_chat');
-                }}
-                className="bg-markee-primary hover:bg-markee-hover text-white px-4 py-2 rounded-lg transition-colors text-xs font-semibold cursor-pointer border-0 shadow-sm"
-              >
-                🪄 Chat với tri thức này
-              </button>
-            </div>
+            {summariesInProject.length === 0 && (
+              <div className="bg-white rounded-xl border border-markee-border p-8 text-center text-markee-sub text-xs">
+                Không tìm thấy bản tóm tắt tri thức nào phù hợp trong dự án này.
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -4387,6 +4448,25 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectSearch, setProjectSearch] = useState('');
   const [projectPage, setProjectPage] = useState(0);
+
+  const [departments, setDepartments] = useState<{ id: number; name: string }[]>([]);
+  const [teams, setTeams] = useState<{ id: number; name: string; department_id: number }[]>([]);
+  const [selectedDeptId, setSelectedDeptId] = useState<number | null>(null);
+  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
+
+  useEffect(() => {
+    async function loadDeptsAndTeams() {
+      try {
+        const { data: deptData } = await supabase.from('departments').select('id, name');
+        setDepartments(deptData || []);
+        const { data: teamData } = await supabase.from('teams').select('id, name, department_id');
+        setTeams(teamData || []);
+      } catch (e) {
+        console.error('Error fetching depts/teams:', e);
+      }
+    }
+    loadDeptsAndTeams();
+  }, []);
 
   const PROJECT_PAGE_SIZE = 9;
   const filteredProjects = useMemo(() => {
@@ -4617,7 +4697,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
   async function loadProjects() {
     setLoading(true);
     try {
-      const data = await fetchProjects(undefined, undefined, 'WIP_GLOBAL');
+      const data = await fetchProjects(undefined, false, 'WIP_GLOBAL', selectedDeptId, selectedTeamId);
       setProjects(data);
     } finally {
       setLoading(false);
@@ -4694,9 +4774,13 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
     setIsSummaryModalOpen(true);
     setSummaryResult(null);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch('/api/summarize-project', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
         body: JSON.stringify({ projectId: selectedProject.id }),
       });
 
@@ -4740,7 +4824,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
       timestamp: new Date().toISOString(),
     };
 
-    const updatedSummaries = [...currentSummaries, summaryItem];
+    const updatedSummaries = [summaryItem, ...currentSummaries];
     const serialized = JSON.stringify(updatedSummaries);
 
     try {
@@ -4767,7 +4851,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
 
   useEffect(() => {
     loadProjects();
-  }, []);
+  }, [selectedDeptId, selectedTeamId]);
 
   return (
     <main className="mx-auto max-w-7xl space-y-5 p-5 relative">
@@ -4801,16 +4885,55 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
       </section>
 
 
-      {/* Search Bar */}
-      <div className="relative w-full max-w-md">
-        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-markee-sub" />
-        <input
-          type="text"
-          value={projectSearch}
-          onChange={(e) => setProjectSearch(e.target.value)}
-          placeholder="Tìm kiếm dự án theo tên..."
-          className="w-full rounded-xl border border-markee-border bg-white py-2.5 pl-10 pr-4 text-xs text-markee-text outline-none transition-colors placeholder:text-markee-sub focus:border-markee-primary"
-        />
+      {/* Filter Row */}
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="relative w-full max-w-md">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-markee-sub" />
+          <input
+            type="text"
+            value={projectSearch}
+            onChange={(e) => setProjectSearch(e.target.value)}
+            placeholder="Tìm kiếm dự án theo tên..."
+            className="w-full rounded-xl border border-markee-border bg-white py-2.5 pl-10 pr-4 text-xs text-markee-text outline-none transition-colors placeholder:text-markee-sub focus:border-markee-primary"
+          />
+        </div>
+
+        {/* Dept Select */}
+        <div className="w-48">
+          <select
+            value={selectedDeptId || ''}
+            onChange={(e) => {
+              const val = e.target.value ? Number(e.target.value) : null;
+              setSelectedDeptId(val);
+              setSelectedTeamId(null);
+            }}
+            className="w-full rounded-xl border border-markee-border bg-white px-3.5 py-2.5 text-xs font-semibold text-markee-text focus:border-markee-primary outline-none transition-colors cursor-pointer"
+          >
+            <option value="">Tất cả phòng ban</option>
+            {departments.map((dept) => (
+              <option key={dept.id} value={dept.id}>{dept.name}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Team Select */}
+        <div className="w-48">
+          <select
+            value={selectedTeamId || ''}
+            onChange={(e) => {
+              const val = e.target.value ? Number(e.target.value) : null;
+              setSelectedTeamId(val);
+            }}
+            className="w-full rounded-xl border border-markee-border bg-white px-3.5 py-2.5 text-xs font-semibold text-markee-text focus:border-markee-primary outline-none transition-colors cursor-pointer"
+          >
+            <option value="">Tất cả team</option>
+            {teams
+              .filter(t => selectedDeptId === null || t.department_id === selectedDeptId)
+              .map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+          </select>
+        </div>
       </div>
 
       {loading ? (
@@ -4993,7 +5116,9 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
                       if (selectedProject?.master_summary) {
                         try {
                           const parsed = JSON.parse(selectedProject.master_summary) as SummaryItem[];
-                          if (Array.isArray(parsed)) summaries = parsed;
+                          if (Array.isArray(parsed)) {
+                            summaries = parsed.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+                          }
                         } catch (e) {
                           console.error("Error parsing master_summary:", e);
                         }
@@ -5009,7 +5134,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
 
                       return (
                         <div className="space-y-4">
-                          {summaries.slice().reverse().map((summary: SummaryItem, idx: number) => (
+                          {summaries.map((summary: SummaryItem, idx: number) => (
                             <div key={idx} className="bg-white border border-gray-200 rounded-xl p-5 shadow-2xs hover:shadow-sm transition-all space-y-3">
                               <div className="flex items-start justify-between gap-3">
                                 <h4 className="font-bold text-markee-text text-sm md:text-base">
@@ -5237,6 +5362,41 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
                                           </div>
                                         )}
                                         <PromptText text={log.prompt_content} />
+                                        {(() => {
+                                          let parsed = null;
+                                          if (log.attached_file) {
+                                            if (typeof log.attached_file === 'object') {
+                                              parsed = log.attached_file;
+                                            } else if (typeof log.attached_file === 'string') {
+                                              try {
+                                                parsed = JSON.parse(log.attached_file);
+                                              } catch (e) {}
+                                            }
+                                          }
+                                          if (!parsed?.storage_path) return null;
+                                          return (
+                                            <div className="mt-3 bg-slate-50 border border-slate-100 rounded-lg p-2.5 flex items-center justify-between gap-3 text-xs bg-white">
+                                              <div className="flex items-center gap-2 min-w-0">
+                                                <span className="text-base shrink-0">📎</span>
+                                                <span className="font-semibold text-slate-700 truncate" title={parsed.file_name}>
+                                                  {parsed.file_name}
+                                                </span>
+                                                <span className="text-[10px] text-slate-400 shrink-0 font-medium">
+                                                  ({formatWipFileSize(parsed.size_bytes)})
+                                                </span>
+                                              </div>
+                                              <a
+                                                href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/chat_attachments/${parsed.storage_path}?download=${parsed.file_name}`}
+                                                download={parsed.file_name}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-200 text-markee-primary hover:text-red-700 font-bold rounded text-[11px] transition-colors shrink-0 flex items-center gap-1 cursor-pointer font-sans"
+                                              >
+                                                Tải xuống
+                                              </a>
+                                            </div>
+                                          );
+                                        })()}
                                       </blockquote>
                                     </div>
                                   )}
