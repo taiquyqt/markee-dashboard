@@ -8,6 +8,7 @@ import ChatSidebar from './ChatSidebar';
 import ChatWindow from './ChatWindow';
 import ChatFolderGrid from './ChatFolderGrid';
 import ProjectDetailView from './ProjectDetailView';
+import { MODEL_CONFIG } from './ChatInput';
 
 interface ChatSession {
   id: string;
@@ -281,7 +282,8 @@ export default function AIChat({ profile }: AIChatProps) {
         const { data: skillData } = await supabase
           .from('skill_library')
           .select('id, title, team_id, markdown_content')
-          .eq('status', 'approved');
+          .eq('status', 'approved')
+          .eq('skill_type', 'workflow');
         setSkills(skillData || []);
       } catch (e) {
         console.error('Error fetching chat popover metadata:', e);
@@ -510,11 +512,49 @@ export default function AIChat({ profile }: AIChatProps) {
     setChatSummaryText('');
     setIsSummaryModalOpen(true);
     try {
-      const prompt = `Hãy tóm tắt các ý chính và tri thức rút ra từ đoạn hội thoại dưới đây dưới dạng Markdown ngắn gọn, rõ ràng:
+      const systemPrompt = `Bạn là một chuyên gia đúc kết tri thức dự án. Hãy tóm tắt lịch sử đoạn chat được cung cấp theo ĐÚNG cấu trúc Markdown dưới đây. Tuyệt đối không thêm phần mở bài hay kết bài dư thừa. Nếu một mục không có thông tin, hãy ghi 'Không có thông tin'.
+
+Hãy đọc lại toàn bộ phiên hội thoại phía trên và tạo một bản tổng hợp trạng thái công việc (Project Handover) bằng Markdown.
+
+YÊU CẦU:
+- Chỉ ghi thông tin thực sự xuất hiện trong cuộc hội thoại.
+- Không suy đoán hoặc tự bổ sung.
+- Nếu một mục chưa có thông tin thì ghi "Chưa có".
+
+## 1. TỔNG QUAN DỰ ÁN
+- Mục tiêu chính
+- Trạng thái hiện tại
+- Những quyết định đã chốt
+
+## 2. KIẾN TRÚC & TIÊU CHUẨN KỸ THUẬT
+- Công nghệ sử dụng
+- Cấu trúc dự án / Module liên quan
+- Quy tắc code
+- Quy tắc UI/UX
+- Quy ước đặt tên (nếu có)
+
+## 3. TRI THỨC RÚT RA
+- Những vấn đề đã gặp
+- Nguyên nhân
+- Cách giải quyết
+- Quy trình chuẩn để áp dụng về sau
+- Những lưu ý quan trọng
+
+## 4. CÔNG VIỆC ĐANG LÀM DỞ
+- TODO
+- Các lỗi còn tồn tại
+- Các ý tưởng chưa thực hiện
+- Những việc cần xác nhận
+
+## 5. BƯỚC TIẾP THEO
+Liệt kê theo thứ tự ưu tiên những việc nên làm ngay khi mở lại dự án.`;
+
+      const chatHistoryText = messages.map(m => `${m.role === 'user' ? 'Người dùng' : 'AI'}: ${m.content}`).join('\n\n');
       
-${messages.map(m => `${m.role === 'user' ? 'Người dùng' : 'AI'}: ${m.content}`).join('\n\n')}`;
-      
-      const summary = await fetchChatCompletion(selectedModel, [{ role: 'user', content: prompt }]);
+      const summary = await fetchChatCompletion(selectedModel, [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Hãy tóm tắt lịch sử đoạn chat sau đây:\n\n${chatHistoryText}` }
+      ]);
       setChatSummaryText(summary);
     } catch (e) {
       console.error('Error summarizing chat:', e);
@@ -762,7 +802,7 @@ ${messages.map(m => `${m.role === 'user' ? 'Người dùng' : 'AI'}: ${m.content
 
       // 6. Fetch from API with priority-based Auto-Fallback
       const fallbackList = [
-        'claude-haiku-4-5-20251001',
+        'deepseek-v4-flash',
         'gpt-4o-mini',
         'google/gemini-3.5-flash',
         'google/gemini-3.1-flash-lite',
@@ -787,7 +827,7 @@ ${messages.map(m => `${m.role === 'user' ? 'Người dùng' : 'AI'}: ${m.content
           }
 
           setToast({
-            message: `${model} đang bận, đã tự động dùng ${nextModel}`,
+            message: `${MODEL_CONFIG[model] || model} đang quá tải. Đang tự động chuyển sang ${MODEL_CONFIG[nextModel] || nextModel}...`,
             type: 'warning'
           });
 
@@ -832,7 +872,10 @@ ${messages.map(m => `${m.role === 'user' ? 'Người dùng' : 'AI'}: ${m.content
     isSendingRef.current = true;
     setIsGenerating(true);
 
+    const localHiddenContext = hiddenContext;
     const localStagedFile = stagedFile;
+    setPendingKnowledgeProjectName(null);
+    setHiddenContext(null);
     setStagedFile(null);  // Dọn dẹp ngay lập tức
 
     // Đọc nội dung file (nếu có) bằng FileReader trước khi gửi
@@ -901,10 +944,17 @@ ${messages.map(m => `${m.role === 'user' ? 'Người dùng' : 'AI'}: ${m.content
           role: 'user',
           content: enrichedContent
         }];
+
+        if (localHiddenContext) {
+          history.unshift({
+            role: 'system',
+            content: `Bạn là trợ lý AI. Dưới đây là ngữ cảnh của dự án hiện tại: ${localHiddenContext.content}. Hãy dựa vào thông tin này để trả lời câu hỏi của người dùng.`
+          });
+        }
         let aiReply = '';
         const currentDisabled = new Set(disabledModels);
         const fallbackList = [
-          'claude-haiku-4-5-20251001',
+          'deepseek-v4-flash',
           'gpt-4o-mini',
           'google/gemini-3.5-flash',
           'google/gemini-3.1-flash-lite',
@@ -921,6 +971,12 @@ ${messages.map(m => `${m.role === 'user' ? 'Người dùng' : 'AI'}: ${m.content
             setDisabledModels(new Set(currentDisabled));
             const nextModel = fallbackList.find(m => !currentDisabled.has(m));
             if (!nextModel) throw new Error("Tất cả các model đều thất bại.");
+
+            setToast({
+              message: `${MODEL_CONFIG[model] || model} đang quá tải. Đang tự động chuyển sang ${MODEL_CONFIG[nextModel] || nextModel}...`,
+              type: 'warning'
+            });
+
             return runFetchWithFallback(nextModel);
           }
         };

@@ -60,6 +60,40 @@ function CodeBlock({ children }: { children: React.ReactNode }) {
   );
 }
 
+// --- Component Card hiển thị file đính kèm trong bong bóng tin nhắn ---
+function FileCard({ fileName }: { fileName: string }) {
+  return (
+    <div className="flex items-center gap-3 bg-white/50 p-3 rounded-lg border border-gray-200 mt-2 w-fit shadow-sm">
+      <div className="bg-blue-100 p-2 rounded text-blue-600 shrink-0">
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
+            d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+        </svg>
+      </div>
+      <span className="text-sm font-semibold text-gray-800">{fileName}</span>
+    </div>
+  );
+}
+
+// Tách phần text câu hỏi và phần file đính kèm để render riêng
+function renderUserContent(content: string) {
+  // Pattern: "câu hỏi\n\n📎 Đính kèm: tên-file"
+  const attachPattern = /^([\s\S]*?)\n\n📎 Đính kèm: (.+)$/;
+  const match = content.match(attachPattern);
+  if (match) {
+    const textPart = match[1].trim();
+    const fileName = match[2].trim();
+    return (
+      <>
+        {textPart && <p className="whitespace-pre-wrap wrap-break-word">{textPart.replace(/\n{3,}/g, '\n\n')}</p>}
+        <FileCard fileName={fileName} />
+      </>
+    );
+  }
+  // Không có file đính kèm — render bình thường
+  return <p className="whitespace-pre-wrap wrap-break-word">{content.replace(/\n{3,}/g, '\n\n')}</p>;
+}
+
 // --- Component Chính ChatWindow ---
 interface Message {
   id?: string;
@@ -181,7 +215,7 @@ export default function ChatWindow({
                     : 'bg-slate-50/50 border border-slate-200 text-slate-800 rounded-tl-none shadow-3xs'
                     }`}>
                     {isUser ? (
-                      <p className="whitespace-pre-wrap wrap-break-word">{msg.content.replace(/\n{3,}/g, '\n\n')}</p>
+                      renderUserContent(msg.content)
                     ) : (
                       <div className="w-full min-w-0 wrap-break-word prose max-w-none prose-p:my-2 prose-p:leading-relaxed text-xs">
                         <ReactMarkdown
@@ -252,6 +286,7 @@ export default function ChatWindow({
         onClearPendingKnowledgeProjectName={onClearPendingKnowledgeProjectName}
         onSummarizeChat={onSummarizeChat}
         hasMessages={messages.length > 0}
+        stagedFile={stagedFile}
         setStagedFile={setStagedFile}
       />
 
@@ -326,7 +361,9 @@ export default function ChatWindow({
                       key={s.id}
                       type="button"
                       onClick={() => {
-                        setInputValue(s.markdown_content || '');
+                        if (setHiddenContext) {
+                          setHiddenContext({ title: s.title, content: s.markdown_content || '' });
+                        }
                         setIsSkillModalOpen(false);
                         setSelectedDeptId(null);
                         setSelectedTeamId(null);
@@ -382,7 +419,9 @@ export default function ChatWindow({
                       key={s.id}
                       type="button"
                       onClick={() => {
-                        setInputValue(s.markdown_content || '');
+                        if (setHiddenContext) {
+                          setHiddenContext({ title: s.title, content: s.markdown_content || '' });
+                        }
                         setIsSkillModalOpen(false);
                         setSelectedDeptId(null);
                         setSelectedTeamId(null);

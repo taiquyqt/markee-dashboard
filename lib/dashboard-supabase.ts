@@ -2,7 +2,7 @@ import type { User } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import { ALL_TRACK_DB_VALUES } from "./org-structure";
 
-export type UserRole = "admin" | "user";
+export type UserRole = "super_admin" | "admin" | "user";
 export type SkillStatus = "pending" | "approved" | "rejected";
 
 export interface AppUser {
@@ -189,7 +189,7 @@ export async function getCurrentUserProfile(): Promise<UserProfile | null> {
     authUser: user,
     email: user.email,
     displayName: fullName,
-    role: dbUser?.role === "admin" ? "admin" : "user",
+    role: (dbUser?.role || "user") as UserRole,
     dbUser: dbUser || null,
   };
 }
@@ -369,11 +369,23 @@ export interface LibraryCounts {
   total: number;
 }
 
-export async function fetchLibraryCounts(userEmail?: string): Promise<LibraryCounts> {
-  let query = supabase.from("skill_library").select("skill_type, team_track").eq("status", "approved").not("skill_type", "ilike", "wip");
+export async function fetchLibraryCounts(
+  userEmail?: string,
+  departmentId?: number | null,
+  teamId?: number | null
+): Promise<LibraryCounts> {
+  let query = supabase.from("skill_library").select("skill_type, team_track, department_id, team_id").eq("status", "approved").not("skill_type", "ilike", "wip");
 
   if (userEmail) {
     query = query.eq("author_id", userEmail);
+  }
+
+  if (departmentId !== undefined && departmentId !== null) {
+    query = query.eq("department_id", departmentId);
+  }
+
+  if (teamId !== undefined && teamId !== null) {
+    query = query.eq("team_id", teamId);
   }
 
   const { data, error } = await query;
@@ -449,7 +461,12 @@ export async function downloadSkillMarkdown(skill: SkillCard) {
 }
 
 export async function fetchPendingSkills(): Promise<SkillCard[]> {
-  const { data, error } = await supabase.from("skill_library").select("id, created_at, title, markdown_content, category, author_id, status, skill_type, likes_count, downloads_count").eq("status", "pending").order("created_at", { ascending: true });
+  const { data, error } = await supabase
+    .from("skill_library")
+    .select("id, created_at, title, markdown_content, category, author_id, status, skill_type, likes_count, downloads_count")
+    .eq("status", "pending")
+    .neq("skill_type", "wip")
+    .order("created_at", { ascending: true });
 
   if (error) {
     console.error("Error fetching pending skills:", error);
@@ -554,7 +571,14 @@ export async function fetchAdminOverviewMetrics(period: AnalyticsPeriod): Promis
     sessionQuery = sessionQuery.gte("created_at", periodStart);
   }
 
-  const [sessionResult, contributorResult] = await Promise.all([sessionQuery, supabase.from("skill_library").select("author_id").eq("status", "approved")]);
+  const [sessionResult, contributorResult] = await Promise.all([
+    sessionQuery,
+    supabase
+      .from("skill_library")
+      .select("author_id, skill_type")
+      .eq("status", "approved")
+      .not("skill_type", "ilike", "wip")
+  ]);
 
   if (sessionResult.error) {
     console.error("Error fetching admin sessions:", sessionResult.error);
@@ -647,7 +671,7 @@ export interface AISession {
 }
 
 export async function fetchAllUsers(): Promise<AppUser[]> {
-  const { data, error } = await supabase.from("users").select("*").order("email", { ascending: true });
+  const { data, error } = await supabase.from("users").select("*").order("id", { ascending: false });
   if (error) {
     console.error("Error fetching all users:", error);
     return [];
@@ -684,12 +708,35 @@ export async function fetchProjects(
     projectsQuery = projectsQuery.eq("type", filterType);
   }
 
+  // Lọc thông qua bảng skill_library vì projects không có department_id hay team_id
+  let projectIdsFilter: number[] | null = null;
+
   if (departmentId !== undefined && departmentId !== null) {
-    projectsQuery = projectsQuery.eq("department_id", departmentId);
+    let skillQuery = supabase
+      .from("skill_library")
+      .select("project_id")
+      .eq("department_id", departmentId);
+    
+    if (teamId !== undefined && teamId !== null) {
+      skillQuery = skillQuery.eq("team_id", teamId);
+    }
+    
+    const { data: skillProjects } = await skillQuery;
+    projectIdsFilter = Array.from(new Set((skillProjects || []).map(sp => sp.project_id).filter(Boolean))) as number[];
+  } else if (teamId !== undefined && teamId !== null) {
+    const { data: skillProjects } = await supabase
+      .from("skill_library")
+      .select("project_id")
+      .eq("team_id", teamId);
+    projectIdsFilter = Array.from(new Set((skillProjects || []).map(sp => sp.project_id).filter(Boolean))) as number[];
   }
 
-  if (teamId !== undefined && teamId !== null) {
-    projectsQuery = projectsQuery.eq("team_id", teamId);
+  if (projectIdsFilter !== null) {
+    if (projectIdsFilter.length === 0) {
+      projectsQuery = projectsQuery.eq("id", -1);
+    } else {
+      projectsQuery = projectsQuery.in("id", projectIdsFilter);
+    }
   }
 
   if (!isAdmin && userEmail) {

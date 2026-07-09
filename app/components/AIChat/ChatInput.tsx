@@ -4,6 +4,14 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Plus, Folder, X, Send, Search } from 'lucide-react';
 
+export const MODEL_CONFIG: Record<string, string> = {
+  'deepseek-v4-flash': 'DeepSeek V4 Flash',
+  'gpt-4o-mini': 'GPT-4o Mini',
+  'google/gemini-3.5-flash': 'Gemini 3.5 Flash',
+  'google/gemini-3.1-flash-lite': 'Gemini 3.1 Lite',
+  'openrouter/free': 'Auto (Free)'
+};
+
 interface Project {
   id: number;
   name: string;
@@ -14,6 +22,62 @@ interface FolderItem {
   id: number;
   name: string;
 }
+
+interface TextareaAutosizeProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+  maxRows?: number;
+  minRows?: number;
+}
+
+const TextareaAutosize = React.forwardRef<HTMLTextAreaElement, TextareaAutosizeProps>(
+  ({ maxRows = 6, minRows = 1, onChange, value, style, className, ...props }, ref) => {
+    const localRef = useRef<HTMLTextAreaElement>(null);
+    const combinedRef = (ref || localRef) as React.RefObject<HTMLTextAreaElement>;
+
+    useEffect(() => {
+      const textarea = combinedRef.current;
+      if (!textarea) return;
+
+      // Reset height to calculate scrollHeight correctly
+      textarea.style.height = 'auto';
+
+      // Tính lineHeight từ style của browser
+      const computed = window.getComputedStyle(textarea);
+      const lineHeight = parseInt(computed.lineHeight) || 16;
+      const paddingTop = parseInt(computed.paddingTop) || 8;
+      const paddingBottom = parseInt(computed.paddingBottom) || 8;
+
+      const minHeight = minRows * lineHeight + paddingTop + paddingBottom;
+      const maxHeight = maxRows * lineHeight + paddingTop + paddingBottom;
+
+      const scrollHeight = textarea.scrollHeight;
+
+      if (scrollHeight > maxHeight) {
+        textarea.style.height = `${maxHeight}px`;
+        textarea.style.overflowY = 'auto';
+      } else if (scrollHeight < minHeight) {
+        textarea.style.height = `${minHeight}px`;
+        textarea.style.overflowY = 'hidden';
+      } else {
+        textarea.style.height = `${scrollHeight}px`;
+        textarea.style.overflowY = 'hidden';
+      }
+    }, [value, minRows, maxRows]);
+
+    return (
+      <textarea
+        ref={combinedRef}
+        value={value}
+        onChange={onChange}
+        style={{ ...style, resize: 'none' }}
+        className={className}
+        {...props}
+      />
+    );
+  }
+);
+
+TextareaAutosize.displayName = 'TextareaAutosize';
+
 
 interface ChatInputProps {
   inputValue: string;
@@ -38,6 +102,7 @@ interface ChatInputProps {
   onClearPendingKnowledgeProjectName?: () => void;
   onSummarizeChat?: () => void;
   hasMessages?: boolean;
+  stagedFile?: File | null;
   setStagedFile?: (file: File | null) => void;
 }
 
@@ -64,15 +129,36 @@ export default function ChatInput({
   onClearPendingKnowledgeProjectName,
   onSummarizeChat,
   hasMessages = false,
+  stagedFile = null,
   setStagedFile,
 }: ChatInputProps) {
   const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [projectSearchQuery, setProjectSearchQuery] = useState('');
+  
   // Local state render pill ngay lập tức - không phụ thuộc prop chain
-  const [stagedFile, setStagedFileLocal] = useState<File | null>(null);
+  const [stagedFileLocal, setStagedFileLocal] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   // KHÔNG dùng fileInputRef nữa - dùng global DOM ID để tránh mất ref khi dropdown unmount
+
+  // Đồng bộ local state file đính kèm từ prop cha truyền xuống
+  useEffect(() => {
+    setStagedFileLocal(stagedFile);
+  }, [stagedFile]);
+
+  // Quản lý tạo preview Base64 bằng FileReader để vượt qua lỗi CSP
+  useEffect(() => {
+    if (stagedFileLocal && stagedFileLocal.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreviewUrl(reader.result as string);
+      };
+      reader.readAsDataURL(stagedFileLocal);
+    } else {
+      setPreviewUrl(null);
+    }
+  }, [stagedFileLocal]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -94,18 +180,43 @@ export default function ChatInput({
   const sessionIdParam = searchParams?.get('session_id');
   const isNewChatMode = !sessionIdParam && (!activeSession || activeSession.id === 'pending');
 
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`;
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData.items;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.indexOf("image") !== -1) {
+        const file = item.getAsFile();
+        if (file) {
+          console.log('=== ĐÃ DÁN ẢNH ===', file);
+          setStagedFileLocal(file);
+          if (typeof setStagedFile === 'function') {
+            setStagedFile(file);
+          }
+          e.preventDefault();
+          break;
+        }
+      }
     }
-  }, [inputValue]);
+  };
+
+
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      onSendMessage();
+      handleSend();
     }
+  };
+
+  // Wrapper gửi tin: dọn sạch file pill TRƯỚC khi gọi API
+  const handleSend = () => {
+    // Xóa file pill ngay lập tức để UX phản hồi tức thì
+    setStagedFileLocal(null);
+    if (typeof setStagedFile === 'function') setStagedFile(null);
+    const domInput = document.getElementById('global-hidden-file-input') as HTMLInputElement | null;
+    if (domInput) domInput.value = '';
+    // Gọi hàm gửi tin nhắn của AIChat
+    onSendMessage();
   };
 
   const handleInjectKnowledge = (title: string, content: string) => {
@@ -196,8 +307,8 @@ export default function ChatInput({
         </>
       )}
 
-      {/* Hidden Context Badge (Only render in new chat creation mode) */}
-      {isNewChatMode && hiddenContext && (
+      {/* Hidden Context Badge (Render in both new chat and old chat modes) */}
+      {hiddenContext && (
         <div className="max-w-4xl mx-auto mb-2 flex items-center gap-2">
           <div className="inline-flex items-center gap-1.5 bg-purple-50 border border-purple-100 text-purple-700 text-[10px] font-bold px-2.5 py-1 rounded-lg shadow-3xs max-w-full">
             <span>💬 Trí thức:</span>
@@ -220,108 +331,127 @@ export default function ChatInput({
         </div>
       )}
 
-      {/* Staged File Badge */}
-      {stagedFile && (
-        <div className="max-w-4xl mx-auto mb-2 flex items-center gap-2">
-          <div className="inline-flex items-center gap-1.5 bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-semibold px-2.5 py-1 rounded-lg shadow-3xs max-w-full">
-            <span>📎 {stagedFile.name}</span>
-            <button
-              type="button"
-              onClick={() => handleClearStagedFile()}
-              className="hover:bg-slate-200 p-0.5 rounded-full cursor-pointer ml-1 flex items-center justify-center border-0 bg-transparent text-slate-400 hover:text-slate-700 transition-colors font-bold text-[10px]"
-              title="Gỡ file này"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="flex items-center gap-2 max-w-4xl mx-auto border border-slate-200 focus-within:border-markee-primary rounded-2xl bg-slate-50 p-2 transition-all relative">
-        {/* Nút icon Plus */}
-        <button
-          type="button"
-          onClick={() => setIsPlusMenuOpen(!isPlusMenuOpen)}
-          className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 transition-colors shrink-0 cursor-pointer border-0 bg-transparent"
-          title="Thêm..."
-        >
-          <Plus className="h-4 w-4" />
-        </button>
-
-        {/* Badge Dự án đang chọn */}
-        {isNewChatMode && !hideProjectSelector && activeSession?.project_id && (
-          <div className="flex items-center gap-1 bg-slate-200/70 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-lg shadow-3xs max-w-[150px] truncate shrink-0 border border-slate-200/80">
-            <Folder className="w-3 h-3 text-slate-500 shrink-0" />
-            <span className="truncate">
-              {(personalFolders.find(p => p.id === activeSession.project_id) || projects.find(p => p.id === activeSession.project_id))?.name || 'Dự án'}
-            </span>
-            <button
-              type="button"
-              onClick={() => onUpdateSessionProject(activeSession.id, null)}
-              className="hover:bg-slate-300/80 p-0.5 rounded-full cursor-pointer ml-1 flex items-center justify-center border-0 bg-transparent text-slate-500 hover:text-slate-800 transition-colors"
-              title="Gỡ khỏi Dự án"
-            >
-              <X className="w-2.5 h-2.5" />
-            </button>
+      {/* Khung chat bọc ngoài cùng kiểu Google Gemini */}
+      <div className="flex flex-col border border-slate-200 focus-within:border-markee-primary rounded-3xl bg-white p-3 shadow-sm max-w-4xl mx-auto transition-all relative">
+        
+        {/* Phần trên: Hiển thị File đính kèm / Preview ảnh (Nếu có) */}
+        {stagedFileLocal && (
+          <div className="flex items-center gap-2 mb-2.5 shrink-0 px-1">
+            {stagedFileLocal.type.startsWith('image/') && previewUrl ? (
+              <div className="relative group h-16 w-16 rounded-xl overflow-hidden border border-slate-200 shadow-3xs bg-white flex items-center justify-center shrink-0">
+                <img
+                  src={previewUrl}
+                  alt="Preview"
+                  className="h-full w-full object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={handleClearStagedFile}
+                  className="absolute top-1 right-1 bg-black/60 hover:bg-black text-white p-1 rounded-full cursor-pointer transition-colors border-0 flex items-center justify-center"
+                  title="Xóa ảnh"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </div>
+            ) : (
+              <div className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold px-3 py-1.5 rounded-xl shadow-3xs max-w-full">
+                <span>📎 {stagedFileLocal.name}</span>
+                <button
+                  type="button"
+                  onClick={handleClearStagedFile}
+                  className="hover:bg-slate-200 p-0.5 rounded-full cursor-pointer ml-1 flex items-center justify-center border-0 bg-transparent text-slate-400 hover:text-slate-700 transition-colors"
+                  title="Gỡ file này"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Khung nhập Text */}
-        <textarea
-          ref={textareaRef}
-          rows={1}
+        {/* TẦNG 2: TEXTAREA (Phủ kín 100% chiều ngang, đứng riêng một hàng) */}
+        <TextareaAutosize
+          ref={textareaRef as any}
+          minRows={1}
+          maxRows={6}
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           placeholder="Hỏi đáp về tri thức dự án hoặc SOP..."
-          className="flex-1 resize-none border-0 bg-transparent text-xs text-slate-800 focus:ring-0 focus:outline-none p-2 leading-relaxed max-h-40 min-h-9 outline-none"
+          className="w-full border-none bg-transparent outline-none resize-none text-sm py-1 px-1 m-0 leading-normal"
         />
 
-        {/* Button Tổng hợp Chat (Chỉ hiện khi có messages) */}
-        {hasMessages && onSummarizeChat && (
-          <button
-            type="button"
-            onClick={onSummarizeChat}
-            className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded text-xs font-semibold transition-all cursor-pointer border-0 outline-none shrink-0"
-            title="Tổng hợp nội dung cuộc trò chuyện"
-          >
-            <span>📝</span>
-            <span className="hidden sm:inline">Tổng hợp</span>
-          </button>
-        )}
-        
-        {/* Dropdown chọn Model */}
-        <select
-          value={selectedModel}
-          onChange={(e) => setSelectedModel(e.target.value)}
-          className="text-xs bg-slate-100 border-none rounded p-1.5 text-slate-900 outline-none focus:ring-1 focus:ring-markee-primary cursor-pointer shrink-0 max-w-35 truncate"
-        >
-          <option value="claude-haiku-4-5-20251001" disabled={disabledModels.has('claude-haiku-4-5-20251001')}>
-            Claude 4.5 Haiku {disabledModels.has('claude-haiku-4-5-20251001') && '(Lỗi)'}
-          </option>
-          <option value="gpt-4o-mini" disabled={disabledModels.has('gpt-4o-mini')}>
-            GPT-4o Mini {disabledModels.has('gpt-4o-mini') && '(Lỗi)'}
-          </option>
-          <option value="google/gemini-3.5-flash" disabled={disabledModels.has('google/gemini-3.5-flash')}>
-            Gemini 3.5 Flash {disabledModels.has('google/gemini-3.5-flash') && '(Lỗi)'}
-          </option>
-          <option value="google/gemini-3.1-flash-lite" disabled={disabledModels.has('google/gemini-3.1-flash-lite')}>
-            Gemini 3.1 Lite {disabledModels.has('google/gemini-3.1-flash-lite') && '(Lỗi)'}
-          </option>
-          <option value="openrouter/free" disabled={disabledModels.has('openrouter/free')}>
-            Auto (Free) {disabledModels.has('openrouter/free') && '(Lỗi)'}
-          </option>
-        </select>
+        {/* TẦNG 3: TOOLBAR DƯỚI ĐÁY (Nút bấm nằm trên hàng riêng phía dưới) */}
+        <div className="flex flex-row justify-between items-center mt-2 pt-1">
+          {/* Bên Trái: Nút Plus & Badge Dự án */}
+          <div className="flex flex-row items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsPlusMenuOpen(!isPlusMenuOpen)}
+              className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors shrink-0 cursor-pointer border-0 bg-transparent h-9 w-9 flex items-center justify-center"
+              title="Thêm..."
+            >
+              <Plus className="h-4 w-4" />
+            </button>
 
-        {/* Nút Send */}
-        <button
-          type="button"
-          disabled={!inputValue.trim() || isGenerating}
-          onClick={onSendMessage}
-          className="rounded-xl bg-markee-primary hover:bg-markee-hover disabled:bg-slate-200 text-white p-2.5 transition-colors cursor-pointer disabled:cursor-not-allowed shrink-0 shadow-sm border-0 flex items-center justify-center"
-        >
-          <Send className="h-4 w-4" />
-        </button>
+            {isNewChatMode && !hideProjectSelector && activeSession?.project_id && (
+              <div className="flex items-center gap-1 bg-slate-100 text-slate-700 text-[10px] font-bold px-2 py-1.5 rounded-lg shadow-3xs max-w-[150px] truncate shrink-0 border border-slate-200/80">
+                <Folder className="w-3 h-3 text-slate-500 shrink-0" />
+                <span className="truncate">
+                  {(personalFolders.find(p => p.id === activeSession.project_id) || projects.find(p => p.id === activeSession.project_id))?.name || 'Dự án'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onUpdateSessionProject(activeSession.id, null)}
+                  className="hover:bg-slate-200 p-0.5 rounded-full cursor-pointer ml-1 flex items-center justify-center border-0 bg-transparent text-slate-500 hover:text-slate-800 transition-colors"
+                  title="Gỡ khỏi Dự án"
+                >
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Bên Phải: Cụm Model + Nút Send */}
+          <div className="flex flex-row items-center gap-2">
+            {/* Button Tổng hợp Chat (Chỉ hiện khi có messages) */}
+            {hasMessages && onSummarizeChat && (
+              <button
+                type="button"
+                onClick={onSummarizeChat}
+                className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-semibold transition-all cursor-pointer border-0 outline-none shrink-0"
+                title="Tổng hợp nội dung cuộc trò chuyện"
+              >
+                <span>📝</span>
+                <span className="hidden sm:inline">Tổng hợp</span>
+              </button>
+            )}
+            
+            {/* Dropdown chọn Model */}
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="text-xs bg-slate-100 border-none rounded-xl p-2 text-slate-900 outline-none focus:ring-1 focus:ring-markee-primary cursor-pointer shrink-0 max-w-35 truncate"
+            >
+              {Object.entries(MODEL_CONFIG).map(([key, name]) => (
+                <option key={key} value={key} disabled={disabledModels.has(key)}>
+                  {name} {disabledModels.has(key) && '(Lỗi)'}
+                </option>
+              ))}
+            </select>
+
+            {/* Nút Send */}
+            <button
+              type="button"
+              disabled={!inputValue.trim() || isGenerating}
+              onClick={handleSend}
+              className="rounded-xl bg-markee-primary hover:bg-markee-hover disabled:bg-slate-200 text-white p-2.5 transition-colors cursor-pointer disabled:cursor-not-allowed shrink-0 shadow-sm border-0 flex items-center justify-center"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Modal 1: Chọn Dự án */}

@@ -186,6 +186,7 @@ export default function ProjectDetailView({
               skills={skills}
               hideProjectSelector={true}
               onOpenSkillModal={() => setIsSkillModalOpen(true)}
+              stagedFile={stagedFile}
               setStagedFile={setStagedFile}
             />
           </div>
@@ -300,7 +301,9 @@ export default function ProjectDetailView({
                       key={s.id}
                       type="button"
                       onClick={() => {
-                        setInputValue(s.markdown_content || '');
+                        if (setHiddenContext) {
+                          setHiddenContext({ title: s.title, content: s.markdown_content || '' });
+                        }
                         setIsSkillModalOpen(false);
                         setSelectedDeptId(null);
                         setSelectedTeamId(null);
@@ -353,7 +356,9 @@ export default function ProjectDetailView({
                       key={s.id}
                       type="button"
                       onClick={() => {
-                        setInputValue(s.markdown_content || '');
+                        if (setHiddenContext) {
+                          setHiddenContext({ title: s.title, content: s.markdown_content || '' });
+                        }
                         setIsSkillModalOpen(false);
                         setSelectedDeptId(null);
                         setSelectedTeamId(null);

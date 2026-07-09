@@ -76,6 +76,8 @@ import UserGuideModal from './UserGuideModal';
 import AIChat from './AIChat/AIChat';
 import FileManagement from './FileManagement';
 import FilePreviewModal from './FilePreviewModal';
+import VpsManagement from './VpsManagement';
+import VpsMonitor from './VpsMonitor';
 
 const PAGE_SIZE = 6;
 const TOOL_COLORS = ['#E3000F', '#FF3344', '#f59e0b', '#a855f7', '#059669', '#0d9488'];
@@ -152,6 +154,7 @@ function StatusPill({ status }: { status: SkillCard['status'] }) {
 }
 
 function roleLabel(role: UserProfile['role']) {
+  if (role === 'super_admin') return 'Super Admin';
   return role === 'admin' ? 'Quản trị viên' : 'Người dùng';
 }
 
@@ -651,18 +654,59 @@ function UserDashboard({
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [previewSkill, setPreviewSkill] = useState<SkillCard | null>(null);
 
-  const [uploadType, setUploadType] = useState('Prompt');
+  const [uploadType, setUploadType] = useState('skill');
   const [uploadTitle, setUploadTitle] = useState('');
-  const [uploadProject, setUploadProject] = useState('');
+  const [uploadProjectId, setUploadProjectId] = useState<number | null>(null);
   const [uploadContent, setUploadContent] = useState('');
+  const [uploadDeptId, setUploadDeptId] = useState<number | null>(null);
+  const [uploadTeamId, setUploadTeamId] = useState<number | null>(null);
+  const [isSavingAsset, setIsSavingAsset] = useState(false);
 
   const [counts, setCounts] = useState<LibraryCounts>({ byType: {}, byTrack: {}, total: 0 });
 
-  const handleUploadSubmit = (e: React.FormEvent) => {
+  const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsUploadModalOpen(false);
-    setUploadTitle('');
-    setUploadContent('');
+    if (!uploadTitle.trim() || !uploadContent.trim()) {
+      showWipToast('Vui lòng điền đầy đủ các trường bắt buộc', 'error');
+      return;
+    }
+
+    setIsSavingAsset(true);
+    showWipToast('Đang tải lên tài sản...', 'loading');
+    try {
+      const { error } = await supabase.from('skill_library').insert({
+        title: uploadTitle.trim(),
+        markdown_content: uploadContent.trim(),
+        category: 'General',
+        author_id: profile.email,
+        status: 'pending',
+        skill_type: uploadType,
+        department_id: uploadDeptId,
+        team_id: uploadTeamId,
+        project_id: uploadProjectId
+      });
+
+      if (error) throw error;
+
+      showWipToast('Đã tải lên tài sản thành công. Đang chờ phê duyệt!', 'success');
+      setIsUploadModalOpen(false);
+
+      // Reset form
+      setUploadTitle('');
+      setUploadContent('');
+      setUploadType('skill');
+      setUploadDeptId(null);
+      setUploadTeamId(null);
+      setUploadProjectId(null);
+
+      // Refresh data
+      loadInitialData();
+    } catch (err) {
+      console.error('Error uploading asset:', err);
+      showWipToast('Lỗi khi tải lên tài sản', 'error');
+    } finally {
+      setIsSavingAsset(false);
+    }
   };
 
   const approvedWorkspaceSkills = useMemo(() => {
@@ -679,7 +723,7 @@ function UserDashboard({
     try {
       const dbTrack = mapTrackToDbValue(selectedTrack);
       const isWorkspace = !isLibraryOnly && activeView === 'workspace';
-      const countsPromise = fetchLibraryCounts(isWorkspace ? profile.email : undefined);
+      const countsPromise = fetchLibraryCounts(isWorkspace ? profile.email : undefined, selectedDeptId, selectedTeamId);
 
       if (isLibraryOnly) {
         const [skills, libCounts] = await Promise.all([
@@ -802,12 +846,13 @@ function UserDashboard({
               <select
                 id="team-select"
                 value={selectedTeamId || ''}
+                disabled={!selectedDeptId}
                 onChange={(e) => {
                   const val = e.target.value ? Number(e.target.value) : null;
                   setSelectedTeamId(val);
                   setPage(0);
                 }}
-                className="w-full rounded-lg border border-markee-border bg-white px-3 py-2 text-xs font-semibold text-markee-text focus:border-markee-primary outline-none transition-colors cursor-pointer"
+                className="w-full rounded-lg border border-markee-border bg-white px-3 py-2 text-xs font-semibold text-markee-text focus:border-markee-primary outline-none transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <option value="">Tất cả team</option>
                 {teams
@@ -1130,134 +1175,157 @@ function UserDashboard({
             <div className="flex justify-between items-center pb-4 border-b border-gray-100 mb-4">
               <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
                 <Plus className="h-4 w-4 text-markee-primary" />
-                + Upload Asset — 2 Step Flow
+                Upload Asset
               </h3>
               <button
-                onClick={() => setIsUploadModalOpen(false)}
+                onClick={() => {
+                  setIsUploadModalOpen(false);
+                  setUploadTitle('');
+                  setUploadContent('');
+                  setUploadType('skill');
+                  setUploadDeptId(null);
+                  setUploadTeamId(null);
+                  setUploadProjectId(null);
+                }}
                 className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+                disabled={isSavingAsset}
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <form onSubmit={handleUploadSubmit} className="space-y-5">
-              {/* Row 1 (Steps) */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="rounded-lg bg-red-50/50 border border-red-100 p-3 flex items-center gap-2.5">
-                  <div className="w-6 h-6 rounded-full bg-markee-primary text-white text-[10px] font-bold flex items-center justify-center">
-                    1
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-gray-900">Step 1: Paste content</div>
-                    <div className="text-[10px] text-gray-500">Dán nội dung tài sản thô</div>
-                  </div>
-                </div>
-                <div className="rounded-lg bg-gray-50 border border-gray-100 p-3 flex items-center gap-2.5 opacity-70">
-                  <div className="w-6 h-6 rounded-full bg-gray-300 text-gray-600 text-[10px] font-bold flex items-center justify-center">
-                    2
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold text-gray-700">Step 2: AI classify & governance</div>
-                    <div className="text-[10px] text-gray-500">AI phân loại và kiểm duyệt</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Row 2 (Asset Type - Clickable) */}
+            <form onSubmit={handleUploadSubmit} className="space-y-4">
               <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">
-                  ASSET TYPE GỢI Ý
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                  Tiêu đề *
                 </label>
-                <div className="flex flex-wrap gap-2">
-                  {["Prompt", "Skill", "SOP", "KB", "Context Pack", "Workflow", "Checklist"].map((type) => {
-                    const isActive = uploadType === type;
-                    return (
-                      <button
-                        key={type}
-                        type="button"
-                        onClick={() => setUploadType(type)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer border ${isActive
-                            ? "bg-purple-100 text-purple-800 border-purple-200"
-                            : "bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
-                          }`}
-                      >
-                        {type}
-                      </button>
-                    );
-                  })}
-                </div>
+                <input
+                  type="text"
+                  required
+                  value={uploadTitle}
+                  onChange={(e) => setUploadTitle(e.target.value)}
+                  placeholder="Nhập tiêu đề tài sản..."
+                  className="w-full rounded-lg border border-gray-200 px-3.5 py-2.5 text-xs text-gray-800 focus:outline-none focus:border-markee-primary bg-white outline-none transition-colors"
+                />
               </div>
 
-              {/* Row 3 (Inputs) */}
+              <div>
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                  Nội dung chi tiết *
+                </label>
+                <textarea
+                  required
+                  rows={5}
+                  value={uploadContent}
+                  onChange={(e) => setUploadContent(e.target.value)}
+                  placeholder="Dán hoặc nhập nội dung tài sản chi tiết..."
+                  className="w-full rounded-lg border border-gray-200 px-3.5 py-2.5 text-xs text-gray-800 focus:outline-none focus:border-markee-primary bg-white outline-none transition-colors resize-none leading-relaxed"
+                />
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
-                    TITLE *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={uploadTitle}
-                    onChange={(e) => setUploadTitle(e.target.value)}
-                    placeholder="Nhập tiêu đề tài sản..."
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-800 focus:outline-none focus:border-markee-primary bg-white outline-none transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
-                    PROJECT
+                    Loại Tài Sản
                   </label>
                   <select
-                    value={uploadProject}
-                    onChange={(e) => setUploadProject(e.target.value)}
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-800 focus:outline-none focus:border-markee-primary bg-white outline-none transition-colors cursor-pointer"
+                    value={uploadType}
+                    onChange={(e) => setUploadType(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 px-3.5 py-2.5 text-xs text-gray-800 focus:outline-none focus:border-markee-primary bg-white outline-none transition-colors cursor-pointer"
                   >
-                    <option value="">Không có dự án</option>
-                    <option value="Project Alpha">Project Alpha</option>
-                    <option value="Project Beta">Project Beta</option>
-                    <option value="System SOC Portal">System SOC Portal</option>
-                    <option value="Marketing Campaign A">Marketing Campaign A</option>
+                    <option value="prompt">Prompt</option>
+                    <option value="skill">Skill</option>
+                    <option value="sop">SOP</option>
+                    <option value="context_pack">Context Pack</option>
+                    <option value="workflow">Workflow</option>
+                    <option value="checklist">Checklist</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                    Gán vào Dự án
+                  </label>
+                  <select
+                    value={uploadProjectId || ''}
+                    onChange={(e) => setUploadProjectId(e.target.value ? Number(e.target.value) : null)}
+                    className="w-full rounded-lg border border-gray-200 px-3.5 py-2.5 text-xs text-gray-800 focus:outline-none focus:border-markee-primary bg-white outline-none transition-colors cursor-pointer"
+                  >
+                    <option value="">Không gán vào dự án</option>
+                    {projects.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
                   </select>
                 </div>
               </div>
 
-              {/* Row 4 (Textarea) */}
-              <div>
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
-                  CONTENT *
-                </label>
-                <textarea
-                  required
-                  rows={6}
-                  value={uploadContent}
-                  onChange={(e) => setUploadContent(e.target.value)}
-                  placeholder="Dán hoặc nhập nội dung tài sản chi tiết vào đây..."
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-xs text-gray-800 focus:outline-none focus:border-markee-primary bg-white outline-none transition-colors resize-none leading-relaxed"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                    Phòng ban
+                  </label>
+                  <select
+                    value={uploadDeptId || ''}
+                    onChange={(e) => {
+                      const val = e.target.value ? Number(e.target.value) : null;
+                      setUploadDeptId(val);
+                      setUploadTeamId(null);
+                    }}
+                    className="w-full rounded-lg border border-gray-200 px-3.5 py-2.5 text-xs text-gray-800 focus:outline-none focus:border-markee-primary bg-white outline-none transition-colors cursor-pointer"
+                  >
+                    <option value="">Tất cả phòng ban</option>
+                    {departments.map((dept) => (
+                      <option key={dept.id} value={dept.id}>{dept.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">
+                    Team phụ trách
+                  </label>
+                  <select
+                    value={uploadTeamId || ''}
+                    disabled={!uploadDeptId}
+                    onChange={(e) => setUploadTeamId(e.target.value ? Number(e.target.value) : null)}
+                    className="w-full rounded-lg border border-gray-200 px-3.5 py-2.5 text-xs text-gray-800 focus:outline-none focus:border-markee-primary bg-white outline-none transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <option value="">Tất cả team</option>
+                    {teams
+                      .filter((t) => !uploadDeptId || t.department_id === uploadDeptId)
+                      .map((t) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                  </select>
+                </div>
               </div>
 
               {/* Footer */}
-              <div className="flex justify-between items-center pt-3 border-t border-gray-100">
-                <div />
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsUploadModalOpen(false);
-                      setUploadTitle('');
-                      setUploadContent('');
-                    }}
-                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
-                  >
-                    Hủy
-                  </button>
-                  <button
-                    type="submit"
-                    className="rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-xs font-semibold text-white transition-colors cursor-pointer shadow-sm"
-                  >
-                    AI classify -&gt;
-                  </button>
-                </div>
+              <div className="flex justify-end items-center gap-2 pt-4 border-t border-gray-100 mt-6">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsUploadModalOpen(false);
+                    setUploadTitle('');
+                    setUploadContent('');
+                    setUploadType('skill');
+                    setUploadDeptId(null);
+                    setUploadTeamId(null);
+                    setUploadProjectId(null);
+                  }}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer"
+                  disabled={isSavingAsset}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingAsset}
+                  className="rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-xs font-semibold text-white transition-colors cursor-pointer shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                >
+                  {isSavingAsset && <span className="animate-spin text-[10px]">⏳</span>}
+                  Tải lên tài sản
+                </button>
               </div>
             </form>
           </div>
@@ -1863,15 +1931,15 @@ export default function RoleDashboard() {
     mime_type: string;
     source_url: string;
   } | null>(null);
-  const [activeTab, _setActiveTab] = useState<'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file'>(() => {
+  const [activeTab, _setActiveTab] = useState<'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file' | 'quan-ly-vps' | 'giam-sat-vps'>(() => {
     if (typeof window !== 'undefined') {
       const searchParams = new URLSearchParams(window.location.search);
       const tab = searchParams.get('tab');
       if (tab === 'my-space' || tab === 'shared') {
         return 'library';
       }
-      if (tab && ['overview', 'library', 'projects', 'users', 'assets', 'knowledge_hub', 'ai_chat', 'chat-folders', 'quan-ly-file'].includes(tab)) {
-        return tab as 'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file';
+      if (tab && ['overview', 'library', 'projects', 'users', 'assets', 'knowledge_hub', 'ai_chat', 'chat-folders', 'quan-ly-file', 'quan-ly-vps', 'giam-sat-vps'].includes(tab)) {
+        return tab as 'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file' | 'quan-ly-vps' | 'giam-sat-vps';
       }
       if (window.location.pathname.startsWith('/projects')) {
         return 'projects';
@@ -1880,7 +1948,7 @@ export default function RoleDashboard() {
     return 'overview';
   });
 
-  const setActiveTab = (tab: 'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file') => {
+  const setActiveTab = (tab: 'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file' | 'quan-ly-vps' | 'giam-sat-vps') => {
     _setActiveTab(tab);
     setIsMainSidebarOpen(false);
     const params = new URLSearchParams();
@@ -1891,13 +1959,13 @@ export default function RoleDashboard() {
     const tab = searchParams.get('tab');
     if (tab === 'my-space' || tab === 'shared') {
       _setActiveTab('library');
-    } else if (tab && ['overview', 'library', 'projects', 'users', 'assets', 'knowledge_hub', 'ai_chat', 'chat-folders', 'quan-ly-file'].includes(tab)) {
-      _setActiveTab(tab as 'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file');
+    } else if (tab && ['overview', 'library', 'projects', 'users', 'assets', 'knowledge_hub', 'ai_chat', 'chat-folders', 'quan-ly-file', 'quan-ly-vps', 'giam-sat-vps'].includes(tab)) {
+      _setActiveTab(tab as 'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file' | 'quan-ly-vps' | 'giam-sat-vps');
     } else if (window.location.pathname.startsWith('/projects')) {
       _setActiveTab('projects');
     } else {
       if (profile) {
-        _setActiveTab(profile.role === 'admin' ? 'overview' : 'library');
+        _setActiveTab((profile.role === 'admin' || profile.role === 'super_admin') ? 'overview' : 'library');
       }
     }
   }, [searchParams, profile?.role]);
@@ -1998,7 +2066,7 @@ export default function RoleDashboard() {
 
         {/* Menu Items */}
         <nav className="p-4 flex-1 space-y-1">
-          {profile.role === 'admin' && (
+          {(profile.role === 'admin' || profile.role === 'super_admin') && (
             <Link
               href="?tab=overview"
               scroll={false}
@@ -2039,7 +2107,7 @@ export default function RoleDashboard() {
             <span>Trò chuyện cùng AI</span>
           </Link>
 
-          {profile.role === 'admin' && (
+          {(profile.role === 'admin' || profile.role === 'super_admin') && (
             <Link
               href="?tab=projects"
               scroll={false}
@@ -2095,7 +2163,7 @@ export default function RoleDashboard() {
             </Link>
           )}
 
-          {profile.role === 'admin' && (
+          {(profile.role === 'admin' || profile.role === 'super_admin') && (
             <Link
               href="?tab=users"
               scroll={false}
@@ -2109,6 +2177,39 @@ export default function RoleDashboard() {
               <span>Quản lý User</span>
             </Link>
           )}
+
+          {/* ---- GROUP: Quản lý tài nguyên ---- */}
+          <div className="pt-3 pb-1">
+            <p className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Quản lý tài nguyên</p>
+          </div>
+
+          <Link
+            href="?tab=quan-ly-vps"
+            scroll={false}
+            onClick={() => setActiveTab('quan-ly-vps')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
+              activeTab === 'quan-ly-vps'
+                ? 'bg-markee-primary text-white shadow-md shadow-red-100'
+                : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
+            }`}
+          >
+            <span>🖥️</span>
+            <span>Quản lý VPS</span>
+          </Link>
+
+          <Link
+            href="?tab=giam-sat-vps"
+            scroll={false}
+            onClick={() => setActiveTab('giam-sat-vps')}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
+              activeTab === 'giam-sat-vps'
+                ? 'bg-markee-primary text-white shadow-md shadow-red-100'
+                : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
+            }`}
+          >
+            <span>📡</span>
+            <span>Giám sát VPS</span>
+          </Link>
         </nav>
       </aside>
 
@@ -2156,7 +2257,7 @@ export default function RoleDashboard() {
           {(activeTab === 'ai_chat' || activeTab === 'chat-folders') && (
             <AIChat profile={profile} />
           )}
-          {activeTab === 'overview' && profile.role === 'admin' && (
+          {activeTab === 'overview' && (profile.role === 'admin' || profile.role === 'super_admin') && (
             <AdminDashboard
               profile={profile}
               onSkillModerated={() => setLibraryRefreshKey((key) => key + 1)}
@@ -2175,8 +2276,8 @@ export default function RoleDashboard() {
             <ProjectManagement profile={profile} />
           )}
 
-          {activeTab === 'users' && profile.role === 'admin' && (
-            <UserManagement />
+          {activeTab === 'users' && (profile.role === 'admin' || profile.role === 'super_admin') && (
+            <UserManagement profile={profile} />
           )}
 
           {activeTab === 'knowledge_hub' && (
@@ -2185,6 +2286,14 @@ export default function RoleDashboard() {
 
           {activeTab === 'quan-ly-file' && (
             <FileManagement setActiveTab={setActiveTab} />
+          )}
+
+          {activeTab === 'quan-ly-vps' && (
+            <VpsManagement />
+          )}
+
+          {activeTab === 'giam-sat-vps' && (
+            <VpsMonitor />
           )}
         </div>
       </div>
@@ -2244,7 +2353,7 @@ function UserOverviewOnly({ profile }: { profile: UserProfile }) {
   );
 }
 
-function UserManagement() {
+function UserManagement({ profile }: { profile: UserProfile }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -2269,6 +2378,7 @@ function UserManagement() {
     }
   };
   const [users, setUsers] = useState<AppUser[]>([]);
+  const [filterRole, setFilterRole] = useState<string>('All');
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'loading' } | null>(null);
 
@@ -2588,6 +2698,11 @@ function UserManagement() {
 
   const planColors = ['#94a3b8', '#38bdf8', '#a855f7', '#E3000F'];
 
+  const filteredUsers = users.filter((u) => {
+    if (filterRole === 'All') return true;
+    return u.role === filterRole;
+  });
+
   return (
     <main className="mx-auto max-w-7xl space-y-5 p-5 relative">
       {/* Toast Notification */}
@@ -2634,6 +2749,26 @@ function UserManagement() {
       {/* Tab 1: Users */}
       {activeTab === 'users' && (
         <>
+          {/* Bộ lọc Role */}
+          <div className="mb-4 flex items-center justify-between bg-white p-4 rounded-xl border border-markee-border shadow-3xs shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-markee-muted">Bộ lọc Role:</span>
+              <select
+                value={filterRole}
+                onChange={(e) => setFilterRole(e.target.value)}
+                className="rounded-lg border border-markee-border bg-white px-3 py-1.5 text-xs font-medium text-markee-text focus:border-markee-primary outline-none transition-colors cursor-pointer"
+              >
+                <option value="All">Tất cả (All)</option>
+                <option value="super_admin">Super Admin</option>
+                <option value="admin">Admin</option>
+                <option value="user">User</option>
+              </select>
+            </div>
+            <div className="text-xs text-markee-muted font-bold">
+              Hiển thị {filteredUsers.length} người dùng
+            </div>
+          </div>
+
           {loading ? (
             <div className="text-center py-10 text-sm text-markee-sub">Đang tải danh sách người dùng...</div>
           ) : (
@@ -2648,36 +2783,49 @@ function UserManagement() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-markee-border">
-                  {users.map((user) => (
-                    <tr key={user.id} className="hover:bg-markee-bg/20 transition-colors">
-                      <td className="px-6 py-4 font-semibold text-markee-text truncate" title={user.full_name || 'Chưa cập nhật'}>
-                        {user.full_name || 'Chưa cập nhật'}
-                      </td>
-                      <td className="px-6 py-4 text-markee-muted truncate" title={user.email}>
-                        {user.email}
-                      </td>
-                      <td className="px-6 py-4">
-                        <select
-                          value={user.role || 'user'}
-                          onChange={(e) => handleRoleChange(user.id, e.target.value as UserRole)}
-                          className="rounded-lg border border-markee-border bg-white px-3 py-1.5 text-xs font-medium text-markee-text focus:border-markee-primary outline-none transition-colors cursor-pointer"
-                        >
-                          <option value="user">User</option>
-                          <option value="admin">Admin</option>
-                        </select>
-                      </td>
+                  {filteredUsers.map((user) => {
+                    const isSelf = user.email === profile?.email;
+                    const isAdminUser = profile?.role === 'admin';
+                    const isDropdownDisabled = isSelf || isAdminUser || user.role === 'super_admin';
 
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                          Active
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                  {users.length === 0 && (
+                    return (
+                      <tr key={user.id} className="hover:bg-markee-bg/20 transition-colors">
+                        <td className="px-6 py-4 font-semibold text-markee-text truncate" title={user.full_name || 'Chưa cập nhật'}>
+                          {user.full_name || 'Chưa cập nhật'}
+                        </td>
+                        <td className="px-6 py-4 text-markee-muted truncate" title={user.email}>
+                          {user.email}
+                        </td>
+                        <td className="px-6 py-4">
+                          <select
+                            value={user.role || 'user'}
+                            disabled={isDropdownDisabled}
+                            onChange={(e) => handleRoleChange(user.id, e.target.value as UserRole)}
+                            className="rounded-lg border border-markee-border bg-white px-3 py-1.5 text-xs font-medium text-markee-text focus:border-markee-primary outline-none transition-colors cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed"
+                          >
+                            {user.role === 'super_admin' ? (
+                              <option value="super_admin">Super Admin</option>
+                            ) : (
+                              <>
+                                <option value="user">User</option>
+                                <option value="admin">Admin</option>
+                              </>
+                            )}
+                          </select>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            Active
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filteredUsers.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="text-center py-8 text-markee-sub">Không tìm thấy người dùng nào.</td>
+                      <td colSpan={4} className="text-center py-8 text-markee-sub">Không tìm thấy người dùng nào.</td>
                     </tr>
                   )}
                 </tbody>
@@ -2868,7 +3016,7 @@ function UserManagement() {
                       let statusText = "Không hoạt động";
                       if (status === 'Active') {
                         statusBadge = "bg-emerald-50 text-emerald-700 border-emerald-200";
-                        statusText = "Đang hoạt động";
+                        statusText = "Còn hạn";
                       } else if (status === 'Expired') {
                         statusBadge = "bg-red-50 text-red-700 border-red-200";
                         statusText = "Đã hết hạn";
@@ -4962,11 +5110,12 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
         <div className="w-48">
           <select
             value={selectedTeamId || ''}
+            disabled={!selectedDeptId}
             onChange={(e) => {
               const val = e.target.value ? Number(e.target.value) : null;
               setSelectedTeamId(val);
             }}
-            className="w-full rounded-xl border border-markee-border bg-white px-3.5 py-2.5 text-xs font-semibold text-markee-text focus:border-markee-primary outline-none transition-colors cursor-pointer"
+            className="w-full rounded-xl border border-markee-border bg-white px-3.5 py-2.5 text-xs font-semibold text-markee-text focus:border-markee-primary outline-none transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <option value="">Tất cả team</option>
             {teams
@@ -5090,7 +5239,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
                 <p className="text-xs text-markee-muted mt-0.5">Timeline ghi nhận các phiên làm việc và tri thức của dự án.</p>
               </div>
               <div className="flex items-center gap-3">
-                {profile.role === 'admin' && (
+                {(profile.role === 'admin' || profile.role === 'super_admin') && (
                   <button
                     type="button"
                     onClick={handleSummarizeProject}
@@ -5308,7 +5457,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
                               const isOwnWIP = profile.email === log.author_id ||
                                 (profile.dbUser?.id && String(profile.dbUser.id) === String(log.author_id)) ||
                                 (profile.authUser?.id && String(profile.authUser.id) === String(log.author_id));
-                              const canManageWIP = profile.role === 'admin' || isOwnWIP;
+                              const canManageWIP = profile.role === 'admin' || profile.role === 'super_admin' || isOwnWIP;
                               const isDeleting = deletingIds.includes(log.id);
 
                               return (
