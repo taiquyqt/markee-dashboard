@@ -2485,7 +2485,7 @@ export default function RoleDashboard() {
   }
 
   return (
-    <div className="flex min-h-screen bg-markee-bg text-markee-text font-sans">
+    <div className="flex h-[100dvh] overflow-hidden bg-markee-bg text-markee-text font-sans">
       {/* Sidebar (Cột trái) */}
       <aside className={`fixed md:relative inset-y-0 left-0 z-50 w-64 bg-white border-r border-markee-border flex flex-col transition-transform duration-300 transform ${isMainSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         } shrink-0`}>

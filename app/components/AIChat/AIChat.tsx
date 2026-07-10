@@ -1069,7 +1069,7 @@ Liệt kê theo thứ tự ưu tiên những việc nên làm ngay khi mở lạ
     : { id: 'pending', title: 'Đoạn chat mới', created_at: '', project_id: pendingSessionProjectId };
 
   return (
-    <div className="flex h-[calc(100vh-64px)] w-full overflow-hidden border border-slate-200 rounded-2xl bg-white shadow-xs relative">
+    <div className="flex h-full w-full overflow-hidden border border-slate-200 rounded-2xl bg-white shadow-xs relative">
       {/* Overlay cho ChatSidebar trên Mobile */}
       {isSidebarOpen && (
         <div

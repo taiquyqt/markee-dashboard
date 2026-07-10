@@ -229,7 +229,7 @@ export default function ChatInput({
   };
 
   return (
-    <div className="border-t border-slate-100 p-4 shrink-0 bg-white relative">
+    <div className="border-t border-slate-100 p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] shrink-0 bg-white relative">
       {/* INPUT FILE: Đặt ngoài cùng với global ID, KHÔNG nằm trong dropdown */}
       <input
         id="global-hidden-file-input"
@@ -381,7 +381,7 @@ export default function ChatInput({
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           placeholder="Hỏi đáp về tri thức dự án hoặc SOP..."
-          className="w-full border-none bg-transparent outline-none resize-none text-sm py-1 px-1 m-0 leading-normal"
+          className="w-full border-none bg-transparent outline-none resize-none text-base md:text-sm py-1 px-1 m-0 leading-normal"
         />
 
         {/* TẦNG 3: TOOLBAR DƯỚI ĐÁY (Nút bấm nằm trên hàng riêng phía dưới) */}
