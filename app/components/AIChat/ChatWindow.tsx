@@ -278,7 +278,7 @@ export default function ChatWindow({
                 placeholder="Tìm kiếm kỹ năng..."
                 value={skillSearchQuery}
                 onChange={(e) => setSkillSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-xs text-slate-800 bg-slate-50/50 focus:outline-none focus:border-markee-primary font-medium"
+                className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-base md:text-xs text-slate-800 bg-slate-50/50 focus:outline-none focus:border-markee-primary font-medium"
               />
             </div>
 

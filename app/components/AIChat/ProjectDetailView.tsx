@@ -129,7 +129,7 @@ export default function ProjectDetailView({
                 type="text"
                 value={folderNameInput}
                 onChange={e => setFolderNameInput(e.target.value)}
-                className="px-2.5 py-1 border border-slate-200 rounded-lg text-sm text-slate-800 font-bold focus:outline-none focus:border-slate-400"
+                className="px-2.5 py-1 border border-slate-200 rounded-lg text-base md:text-sm text-slate-800 font-bold focus:outline-none focus:border-slate-400"
                 autoFocus
               />
               <button type="submit" className="text-xs bg-markee-primary hover:bg-markee-hover text-white px-2.5 py-1 rounded-lg font-bold cursor-pointer">Lưu</button>
@@ -286,7 +286,7 @@ export default function ProjectDetailView({
                 placeholder="Tìm kiếm kỹ năng..."
                 value={skillSearchQuery}
                 onChange={(e) => setSkillSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-xs text-slate-800 bg-slate-50/50 focus:outline-none focus:border-markee-primary font-medium"
+                className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-base md:text-xs text-slate-800 bg-slate-50/50 focus:outline-none focus:border-markee-primary font-medium"
               />
             </div>
 

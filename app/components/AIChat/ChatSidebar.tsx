@@ -133,7 +133,7 @@ export default function ChatSidebar({
                 if (e.key === 'Escape') setEditingSessionId(null);
               }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full text-xs text-slate-900 px-2 py-1 bg-white border border-red-300 rounded outline-none focus:border-red-500 font-normal"
+              className="w-full text-base md:text-xs text-slate-900 px-2 py-1 bg-white border border-red-300 rounded outline-none focus:border-red-500 font-normal"
             />
           ) : (
             <>

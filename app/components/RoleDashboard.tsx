@@ -3223,14 +3223,14 @@ function UserManagement({ profile }: { profile: UserProfile }) {
           {loading ? (
             <div className="text-center py-10 text-sm text-markee-sub">Đang tải danh sách người dùng...</div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-markee-border bg-white shadow-xs">
-              <table className="w-full border-collapse text-left text-sm text-markee-text table-fixed">
+            <div className="overflow-x-auto rounded-xl border border-markee-border bg-white shadow-xs whitespace-nowrap">
+              <table className="w-full border-collapse text-left text-sm text-markee-text table-auto md:table-fixed">
                 <thead className="bg-markee-bg text-xs font-semibold uppercase tracking-wider text-markee-muted border-b border-markee-border">
                   <tr>
-                    <th className="px-6 py-4 w-1/4">Tên người dùng</th>
-                    <th className="px-6 py-4 w-1/4">Email</th>
-                    <th className="px-6 py-4 w-1/6">Vai trò (Role)</th>
-                    <th className="px-6 py-4 w-1/6">Trạng thái</th>
+                    <th className="px-6 py-4 w-1/2 md:w-1/4">Tên người dùng</th>
+                    <th className="px-6 py-4 w-1/4 hidden md:table-cell">Email</th>
+                    <th className="px-6 py-4 w-1/4 md:w-1/6">Vai trò (Role)</th>
+                    <th className="px-6 py-4 w-1/4 md:w-1/6">Trạng thái</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-markee-border">
@@ -3241,10 +3241,10 @@ function UserManagement({ profile }: { profile: UserProfile }) {
 
                     return (
                       <tr key={user.id} className="hover:bg-markee-bg/20 transition-colors">
-                        <td className="px-6 py-4 font-semibold text-markee-text truncate" title={user.full_name || 'Chưa cập nhật'}>
+                        <td className="px-6 py-4 font-semibold text-markee-text truncate max-w-40 md:max-w-none" title={user.full_name || 'Chưa cập nhật'}>
                           {user.full_name || 'Chưa cập nhật'}
                         </td>
-                        <td className="px-6 py-4 text-markee-muted truncate" title={user.email}>
+                        <td className="px-6 py-4 text-markee-muted truncate hidden md:table-cell" title={user.email}>
                           {user.email}
                         </td>
                         <td className="px-6 py-4">
@@ -4416,7 +4416,7 @@ function MyAssetsView({ profile }: { profile: UserProfile }) {
                 required
                 value={renewDate}
                 onChange={(e) => setRenewDate(e.target.value)}
-                className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary"
+                className="w-full px-3 py-2 text-base md:text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary"
               />
             </div>
 
@@ -4460,7 +4460,7 @@ function MyAssetsView({ profile }: { profile: UserProfile }) {
                   <select
                     value={declareTag}
                     onChange={(e) => setDeclareTag(e.target.value as any)}
-                    className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary outline-none cursor-pointer"
+                    className="w-full px-3 py-2 text-base md:text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary outline-none cursor-pointer"
                   >
                     <option value="Personal">Cá nhân</option>
                     <option value="Company">Công ty</option>
@@ -4471,7 +4471,7 @@ function MyAssetsView({ profile }: { profile: UserProfile }) {
                   <select
                     value={declareTool}
                     onChange={(e) => setDeclareTool(e.target.value)}
-                    className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary outline-none cursor-pointer"
+                    className="w-full px-3 py-2 text-base md:text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary outline-none cursor-pointer"
                   >
                     <option value="ChatGPT">ChatGPT</option>
                     <option value="Claude">Claude</option>
@@ -4486,7 +4486,7 @@ function MyAssetsView({ profile }: { profile: UserProfile }) {
                   <select
                     value={declarePlan}
                     onChange={(e) => setDeclarePlan(e.target.value)}
-                    className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary outline-none cursor-pointer"
+                    className="w-full px-3 py-2 text-base md:text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary outline-none cursor-pointer"
                   >
                     <option value="Free">Free</option>
                     <option value="Plus">Plus</option>
@@ -4501,7 +4501,7 @@ function MyAssetsView({ profile }: { profile: UserProfile }) {
                     required
                     value={declareExpiry}
                     onChange={(e) => setDeclareExpiry(e.target.value)}
-                    className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary"
+                    className="w-full px-3 py-2 text-base md:text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary"
                   />
                 </div>
               </div>
@@ -4516,12 +4516,12 @@ function MyAssetsView({ profile }: { profile: UserProfile }) {
                     required
                     value={declareCost}
                     onChange={(e) => setDeclareCost(e.target.value)}
-                    className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary"
+                    className="w-full px-3 py-2 text-base md:text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary"
                   />
                   <select
                     value={declareCurrency}
                     onChange={(e) => setDeclareCurrency(e.target.value)}
-                    className="px-2 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary outline-none cursor-pointer shrink-0"
+                    className="px-2 py-2 text-base md:text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary outline-none cursor-pointer shrink-0"
                   >
                     <option value="VND">VNĐ</option>
                     <option value="USD">USD</option>
@@ -4571,7 +4571,7 @@ function MyAssetsView({ profile }: { profile: UserProfile }) {
                   <select
                     value={editLicenseTool}
                     onChange={(e) => setEditLicenseTool(e.target.value)}
-                    className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary outline-none cursor-pointer"
+                    className="w-full px-3 py-2 text-base md:text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary outline-none cursor-pointer"
                   >
                     <option value="ChatGPT">ChatGPT</option>
                     <option value="Claude">Claude</option>
@@ -4583,7 +4583,7 @@ function MyAssetsView({ profile }: { profile: UserProfile }) {
                   <select
                     value={editLicensePlan}
                     onChange={(e) => setEditLicensePlan(e.target.value)}
-                    className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary outline-none cursor-pointer"
+                    className="w-full px-3 py-2 text-base md:text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary outline-none cursor-pointer"
                   >
                     <option value="Free">Free</option>
                     <option value="Plus">Plus</option>
@@ -4604,12 +4604,12 @@ function MyAssetsView({ profile }: { profile: UserProfile }) {
                       required
                       value={editLicenseCost}
                       onChange={(e) => setEditLicenseCost(e.target.value)}
-                      className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary"
+                      className="w-full px-3 py-2 text-base md:text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary"
                     />
                     <select
                       value={editLicenseCurrency}
                       onChange={(e) => setEditLicenseCurrency(e.target.value)}
-                      className="px-2 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary outline-none cursor-pointer shrink-0"
+                      className="px-2 py-2 text-base md:text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary outline-none cursor-pointer shrink-0"
                     >
                       <option value="VND">VNĐ</option>
                       <option value="USD">USD</option>
@@ -4628,7 +4628,7 @@ function MyAssetsView({ profile }: { profile: UserProfile }) {
                     required
                     value={editLicenseExpiry}
                     onChange={(e) => setEditLicenseExpiry(e.target.value)}
-                    className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary"
+                    className="w-full px-3 py-2 text-base md:text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary"
                   />
                 </div>
               </div>
@@ -5951,10 +5951,10 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
                     })()}
                   </div>
                 ) : (
-                  <div className="flex-1 overflow-hidden p-6 flex gap-6">
+                  <div className="flex-1 overflow-y-auto md:overflow-hidden p-4 md:p-6 flex flex-col md:flex-row gap-4 md:gap-6">
                     {/* Left Sidebar: Active Members */}
-                    <div className="w-1/4 min-w-50 border-r border-markee-border pr-6 overflow-y-auto flex flex-col">
-                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 h-full flex flex-col">
+                    <div className="w-full md:w-1/4 md:min-w-50 border-b md:border-b-0 md:border-r border-markee-border pb-4 md:pb-0 md:pr-6 flex flex-col shrink-0">
+                      <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 md:p-4 flex flex-col h-full">
                         <h4 className="text-xs font-bold text-markee-muted uppercase tracking-wider mb-3">
                           Thành viên hoạt động
                         </h4>
@@ -5964,7 +5964,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
                         ) : members.length === 0 ? (
                           <div className="text-xs text-markee-muted py-2">Không có thành viên nào.</div>
                         ) : (
-                          <div className="space-y-1.5 overflow-y-auto flex-1 pr-1">
+                          <div className="flex flex-row md:flex-col gap-2 md:gap-1.5 overflow-x-auto md:overflow-y-auto overflow-y-hidden md:overflow-x-hidden flex-1 pb-1 md:pb-0 pr-1">
                             {members.map((m) => {
                               const isActive = activeMemberEmail === m.email;
                               const isCurrentUser = m.email === profile.email;
@@ -5973,10 +5973,11 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
                                   key={m.email}
                                   type="button"
                                   onClick={() => handleSelectMember(m.email)}
-                                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all border ${isActive
+                                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all border shrink-0 md:shrink ${
+                                    isActive
                                       ? 'bg-markee-primary/10 border-markee-primary/20 text-markee-primary font-bold'
                                       : 'hover:bg-slate-100 border-transparent text-markee-text'
-                                    }`}
+                                  } w-48 md:w-full`}
                                 >
                                   <div
                                     className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-[10px] text-white shrink-0 select-none shadow-3xs"
@@ -6004,7 +6005,7 @@ function ProjectManagement({ profile }: { profile: UserProfile }) {
                     </div>
 
                     {/* Right Timeline Panel */}
-                    <div className="flex-1 overflow-y-auto pl-2 flex flex-col pr-1 h-full">
+                    <div className="flex-1 md:overflow-y-auto md:pl-2 flex flex-col pr-1 h-full min-h-[300px] md:min-h-0">
 
 
                       {logsLoading && logs.length === 0 ? (

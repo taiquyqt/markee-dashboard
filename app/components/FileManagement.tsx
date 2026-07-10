@@ -197,7 +197,7 @@ export default function FileManagement({ setActiveTab, profile }: FileManagement
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Tìm theo tên file, công cụ, prompt hoặc người tải..."
-            className="w-full bg-slate-50 border border-slate-200 focus:border-markee-primary rounded-lg pl-9 pr-4 py-2 text-xs text-slate-800 outline-none transition-colors"
+            className="w-full bg-slate-50 border border-slate-200 focus:border-markee-primary rounded-lg pl-9 pr-4 py-2 text-base md:text-xs text-slate-800 outline-none transition-colors"
           />
         </div>
         <div className="text-xs font-semibold text-slate-500">
