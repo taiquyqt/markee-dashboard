@@ -43,6 +43,7 @@ import ProjectManagement from './ProjectManagement/ProjectManagement';
 import KnowledgeHubDashboard from './KnowledgeHub/KnowledgeHubDashboard';
 import MyAssetsView from './MyAssets/MyAssetsView';
 import UserManagement from './UserManagement/UserManagement';
+import ApiManagementDashboard from './ApiManagement/ApiManagementDashboard';
 
 const TOOL_COLORS = ['#E3000F', '#FF3344', '#f59e0b', '#a855f7', '#059669', '#0d9488'];
 
@@ -313,15 +314,15 @@ export default function RoleDashboard() {
     mime_type: string;
     source_url: string;
   } | null>(null);
-  const [activeTab, _setActiveTab] = useState<'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file' | 'quan-ly-vps' | 'giam-sat-vps' | 'skill_approval'>(() => {
+  const [activeTab, _setActiveTab] = useState<'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file' | 'quan-ly-vps' | 'giam-sat-vps' | 'skill_approval' | 'api_management'>(() => {
     if (typeof window !== 'undefined') {
       const searchParams = new URLSearchParams(window.location.search);
       const tab = searchParams.get('tab');
       if (tab === 'my-space' || tab === 'shared') {
         return 'library';
       }
-      if (tab && ['overview', 'library', 'projects', 'users', 'assets', 'knowledge_hub', 'ai_chat', 'chat-folders', 'quan-ly-file', 'quan-ly-vps', 'giam-sat-vps', 'skill_approval'].includes(tab)) {
-        return tab as 'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file' | 'quan-ly-vps' | 'giam-sat-vps' | 'skill_approval';
+      if (tab && ['overview', 'library', 'projects', 'users', 'assets', 'knowledge_hub', 'ai_chat', 'chat-folders', 'quan-ly-file', 'quan-ly-vps', 'giam-sat-vps', 'skill_approval', 'api_management'].includes(tab)) {
+        return tab as 'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file' | 'quan-ly-vps' | 'giam-sat-vps' | 'skill_approval' | 'api_management';
       }
       if (window.location.pathname.startsWith('/projects')) {
         return 'projects';
@@ -330,7 +331,7 @@ export default function RoleDashboard() {
     return 'overview';
   });
 
-  const setActiveTab = (tab: 'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file' | 'quan-ly-vps' | 'giam-sat-vps' | 'skill_approval') => {
+  const setActiveTab = (tab: 'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file' | 'quan-ly-vps' | 'giam-sat-vps' | 'skill_approval' | 'api_management') => {
     _setActiveTab(tab);
     setIsMobileOpen(false);
     const params = new URLSearchParams();
@@ -342,8 +343,8 @@ export default function RoleDashboard() {
     const tab = searchParams.get('tab');
     if (tab === 'my-space' || tab === 'shared') {
       _setActiveTab('library');
-    } else if (tab && ['overview', 'library', 'projects', 'users', 'assets', 'knowledge_hub', 'ai_chat', 'chat-folders', 'quan-ly-file', 'quan-ly-vps', 'giam-sat-vps', 'skill_approval'].includes(tab)) {
-      _setActiveTab(tab as 'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file' | 'quan-ly-vps' | 'giam-sat-vps' | 'skill_approval');
+    } else if (tab && ['overview', 'library', 'projects', 'users', 'assets', 'knowledge_hub', 'ai_chat', 'chat-folders', 'quan-ly-file', 'quan-ly-vps', 'giam-sat-vps', 'skill_approval', 'api_management'].includes(tab)) {
+      _setActiveTab(tab as 'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file' | 'quan-ly-vps' | 'giam-sat-vps' | 'skill_approval' | 'api_management');
     } else if (window.location.pathname.startsWith('/projects')) {
       _setActiveTab('projects');
     } else {
@@ -384,7 +385,7 @@ export default function RoleDashboard() {
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-markee-bg text-markee-text font-sans">
       {/* Sidebar (Cột trái) */}
-      <aside className={`fixed md:relative inset-y-0 left-0 z-[100] bg-white border-r border-markee-border flex flex-col transition-all duration-300 transform ${isMobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} ${isCollapsed ? 'w-72 md:w-20' : 'w-72 md:w-64'} shrink-0`}>
+      <aside className={`fixed md:relative inset-y-0 left-0 z-[999] bg-white border-r border-markee-border flex flex-col transition-all duration-300 transform ${isMobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} ${isCollapsed ? 'w-72 md:w-20' : 'w-72 md:w-64'} shrink-0`}>
         {/* Logo & Toggle */}
         <div className={`p-4 border-b border-markee-border flex items-center justify-between ${isCollapsed ? 'flex-col gap-3 justify-center' : ''}`}>
           <div className="flex items-center gap-3">
@@ -556,6 +557,22 @@ export default function RoleDashboard() {
             </Link>
           )}
 
+          {(profile.role === 'admin' || profile.role === 'super_admin') && (
+            <Link
+              href="?tab=api_management"
+              scroll={false}
+              prefetch={false}
+              onClick={(e) => { e.stopPropagation(); setActiveTab('api_management'); }}
+              className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'} ${activeTab === 'api_management'
+                  ? 'bg-markee-primary text-white shadow-md shadow-red-100'
+                  : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
+                }`}
+            >
+              <span>🔑</span>
+              <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Quản lý API & Chi phí</span>
+            </Link>
+          )}
+
           {/* ---- GROUP: Quản lý tài nguyên ---- */}
           {(profile.role === 'admin' || profile.role === 'super_admin') && (
             <>
@@ -610,7 +627,7 @@ export default function RoleDashboard() {
       {isMobileOpen && (
         <div
           onClick={() => setIsMobileOpen(false)}
-          className="fixed inset-0 bg-black/40 z-[90] md:hidden animate-in fade-in duration-200"
+          className="fixed inset-0 bg-black/40 z-[990] md:hidden animate-in fade-in duration-200"
         />
       )}
 
@@ -648,7 +665,7 @@ export default function RoleDashboard() {
         {/* Scrollable Content Container */}
         <div key={activeTab} className={`flex-1 ${(activeTab === 'ai_chat' || activeTab === 'chat-folders') ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'}`}>
           {(activeTab === 'ai_chat' || activeTab === 'chat-folders') && (
-            <AIChat profile={profile} />
+            <AIChat profile={profile} isMobileOpen={isMobileOpen} />
           )}
           {activeTab === 'overview' && (profile.role === 'admin' || profile.role === 'super_admin') && (
             <AdminDashboard
@@ -679,6 +696,10 @@ export default function RoleDashboard() {
 
           {activeTab === 'users' && (profile.role === 'admin' || profile.role === 'super_admin') && (
             <UserManagement profile={profile} />
+          )}
+
+          {activeTab === 'api_management' && (profile.role === 'admin' || profile.role === 'super_admin') && (
+            <ApiManagementDashboard isTab={true} />
           )}
 
           {activeTab === 'knowledge_hub' && (

@@ -12,6 +12,7 @@ import {
   ChevronRight,
   SlidersHorizontal,
   MoreHorizontal,
+  Share2,
 } from 'lucide-react';
 
 interface ChatSession {
@@ -29,6 +30,7 @@ interface ChatSidebarProps {
   onDeleteSession: (id: string) => void;
   onInjectPrompt: (prompt: string) => void;
   onRenameSession: (id: string, newTitle: string) => void;
+  onShareSession: (id: string, title: string) => void;
   isOpen?: boolean;
   onClose?: () => void;
   projects: { id: number; name: string }[];
@@ -45,6 +47,7 @@ export default function ChatSidebar({
   onCreateSession,
   onDeleteSession,
   onRenameSession,
+  onShareSession,
   isOpen = false,
   projects,
   personalFolders = [],
@@ -178,6 +181,19 @@ export default function ChatSidebar({
             >
               <Pencil className="h-3.5 w-3.5" />
               <span>Đổi tên</span>
+            </button>
+            
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onShareSession(session.id, session.title);
+                setOpenMenuId(null);
+              }}
+              className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50 text-sm text-slate-700 w-full cursor-pointer bg-transparent border-0"
+            >
+              <Share2 className="h-3.5 w-3.5" />
+              <span>Chia sẻ</span>
             </button>
             
             <button

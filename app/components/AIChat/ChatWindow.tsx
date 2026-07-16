@@ -73,6 +73,7 @@ interface ChatWindowProps {
   stagedFile?: File | null;
   setStagedFile?: (file: File | null) => void;
   onStopGeneration?: () => void;
+  isMobileOpen?: boolean;
 }
 
 export default function ChatWindow({
@@ -100,6 +101,7 @@ export default function ChatWindow({
   onStopGeneration,
   stagedFile = null,
   setStagedFile,
+  isMobileOpen = false,
 }: ChatWindowProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isSkillModalOpen, setIsSkillModalOpen] = useState(false);
@@ -113,7 +115,7 @@ export default function ChatWindow({
   }, [messages, isGenerating]);
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-white min-w-0">
+    <div className="flex-1 flex flex-col h-full bg-white min-w-0 relative z-10">
       {/* Header của ChatWindow */}
       <div className="h-14 border-b border-slate-200 px-4 flex items-center justify-between bg-white shrink-0">
         <div className="flex items-center gap-2">
@@ -233,6 +235,7 @@ export default function ChatWindow({
         hasMessages={messages.length > 0}
         stagedFile={stagedFile}
         setStagedFile={setStagedFile}
+        isMobileOpen={isMobileOpen}
       />
 
       {/* Modal 2: Chọn Skill dạng Cascading Dropdown */}

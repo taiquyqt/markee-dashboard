@@ -43,6 +43,7 @@ interface ProjectDetailViewProps {
   stagedFile?: File | null;
   setStagedFile?: (file: File | null) => void;
   onToggleSidebar?: () => void;
+  isMobileOpen?: boolean;
 }
 
 export default function ProjectDetailView({
@@ -64,6 +65,7 @@ export default function ProjectDetailView({
   stagedFile = null,
   setStagedFile,
   onToggleSidebar,
+  isMobileOpen = false,
 }: ProjectDetailViewProps) {
   const [inputValue, setInputValue] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -118,7 +120,7 @@ export default function ProjectDetailView({
   };
 
   return (
-    <div className="flex-1 bg-white flex flex-col h-full overflow-hidden">
+    <div className="flex-1 bg-white flex flex-col h-full overflow-hidden relative z-10">
       {/* Header */}
       <div className="border-b border-slate-100 px-8 py-5 flex items-center justify-between shrink-0 bg-slate-50/40">
         <div className="flex items-center gap-3">
@@ -176,9 +178,9 @@ export default function ProjectDetailView({
       {/* Body Container */}
       <div className="flex-1 overflow-y-auto p-8 space-y-8 flex flex-col justify-between">
         {/* Quick Input Bar (Top) */}
-        <div className="w-full max-w-4xl mx-auto space-y-2 shrink-0 relative z-[40]">
+        <div className={`w-full max-w-4xl mx-auto space-y-2 shrink-0 relative transition-all ${isMobileOpen ? 'z-0 pointer-events-none' : 'z-[40]'}`}>
           <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1 text-center">Bắt đầu trò chuyện trong dự án này</h2>
-          <div className="border border-slate-200 rounded-2xl bg-white shadow-sm">
+          <div className={`border border-slate-200 rounded-2xl bg-white transition-shadow ${isMobileOpen ? 'shadow-none' : 'shadow-sm'}`}>
             <ChatInput
               inputValue={inputValue}
               setInputValue={setInputValue}

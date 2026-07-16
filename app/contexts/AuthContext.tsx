@@ -56,6 +56,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const [isShareRoute, setIsShareRoute] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setIsShareRoute(window.location.pathname.startsWith('/share/'));
+    }
+  }, []);
+
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#f8fafc] text-sm text-[#64748b]">
@@ -67,7 +75,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user) {
+  if (!user && !isShareRoute) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#f8fafc] p-5 text-[#1e293b]">
         <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 text-center shadow-lg">

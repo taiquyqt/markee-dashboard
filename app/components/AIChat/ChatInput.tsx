@@ -105,6 +105,7 @@ interface ChatInputProps {
   hasMessages?: boolean;
   stagedFile?: File | null;
   setStagedFile?: (file: File | null) => void;
+  isMobileOpen?: boolean;
 }
 
 export default function ChatInput({
@@ -133,6 +134,7 @@ export default function ChatInput({
   hasMessages = false,
   stagedFile = null,
   setStagedFile,
+  isMobileOpen = false,
 }: ChatInputProps) {
   const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
@@ -229,7 +231,7 @@ export default function ChatInput({
   };
 
   return (
-    <div className="border-t border-slate-100 p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] shrink-0 bg-white relative">
+    <div className={`border-t border-slate-100 p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] shrink-0 bg-white relative transition-all ${isMobileOpen ? 'z-0 shadow-none pointer-events-none' : 'z-10'}`}>
       {/* INPUT FILE: Đặt ngoài cùng với global ID, KHÔNG nằm trong dropdown */}
       <input
         id="global-hidden-file-input"

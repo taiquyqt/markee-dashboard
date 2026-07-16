@@ -9,6 +9,7 @@ import ChatWindow from './ChatWindow';
 import ChatFolderGrid from './ChatFolderGrid';
 import ProjectDetailView from './ProjectDetailView';
 import { MODEL_CONFIG } from './ChatInput';
+import { Share2, X, Copy, Check } from 'lucide-react';
 
 interface ChatSession {
   id: string;
@@ -27,6 +28,7 @@ interface Message {
 
 interface AIChatProps {
   profile: UserProfile;
+  isMobileOpen?: boolean;
 }
 
 function generateUUID() {
@@ -41,47 +43,29 @@ function generateUUID() {
 }
 
 async function fetchChatCompletion(model: string, history: { role: string; content: string }[], signal?: AbortSignal) {
+  const response = await fetch('/api/chat', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      messages: history,
+      stream: false,
+    }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`API request failed with status ${response.status}: ${errText}`);
+  }
+
+  const resData = await response.json();
+
+  // Parse reply based on model/provider schema returned by the proxy
   const name = model.toLowerCase();
-
-  // 1. Nhóm Gemini (Gemini 3.5 Flash, 3.1 Lite...)
   if (name.includes('gemini') || name.includes('google')) {
-    const geminiModel = model.replace('google/', '');
-    const geminiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
-    
-    let systemInstruction = undefined;
-    const contents = [];
-    
-    for (const m of history) {
-      if (m.role === 'system') {
-        systemInstruction = {
-          parts: [{ text: m.content }]
-        };
-      } else {
-        contents.push({
-          role: m.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: m.content }],
-        });
-      }
-    }
-
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents,
-        ...(systemInstruction ? { systemInstruction } : {}),
-      }),
-      signal,
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Gemini API request failed with status ${response.status}: ${errText}`);
-    }
-
-    const resData = await response.json();
     const reply = resData.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!reply) {
       throw new Error('Gemini API returned an empty response.');
@@ -89,66 +73,14 @@ async function fetchChatCompletion(model: string, history: { role: string; conte
     return reply;
   }
 
-  // 2. Model Auto (Auto Free) -> OpenRouter
-  if (name.includes('auto') || name.includes('free') || name.includes('openrouter')) {
-    const apiKey = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY || '';
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-        'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
-        'X-Title': 'Markee AI',
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: history,
-      }),
-      signal,
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`OpenRouter request failed with status ${response.status}: ${errText}`);
-    }
-
-    const resData = await response.json();
-    const reply = resData.choices?.[0]?.message?.content;
-    if (!reply) {
-      throw new Error('OpenRouter returned an empty response.');
-    }
-    return reply;
-  }
-
-  // 3. Nhóm GPT & Claude (GPT-4o Mini, Claude 4.5 Haiku...) -> ShopAIKey
-  const apiKey = process.env.NEXT_PUBLIC_SHOPAIKEY_API_KEY || '';
-  const response = await fetch('https://api.shopaikey.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: model,
-      messages: history,
-    }),
-    signal,
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`ShopAIKey request failed with status ${response.status}: ${errText}`);
-  }
-
-  const resData = await response.json();
   const reply = resData.choices?.[0]?.message?.content;
   if (!reply) {
-    throw new Error('ShopAIKey returned an empty response.');
+    throw new Error('API returned an empty response.');
   }
   return reply;
 }
 
-export default function AIChat({ profile }: AIChatProps) {
+export default function AIChat({ profile, isMobileOpen = false }: AIChatProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -171,6 +103,54 @@ export default function AIChat({ profile }: AIChatProps) {
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [selectedModel, setSelectedModel] = useState('openrouter/free');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // States cho tính năng Chia sẻ đoạn chat
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [shareSessionId, setShareSessionId] = useState<string | null>(null);
+  const [shareSessionTitle, setShareSessionTitle] = useState('');
+  const [shareLink, setShareLink] = useState<string | null>(null);
+  const [generatingShareLink, setGeneratingShareLink] = useState(false);
+  const [copiedShareLink, setCopiedShareLink] = useState(false);
+
+  const handleShareSession = (id: string, title: string) => {
+    setShareSessionId(id);
+    setShareSessionTitle(title);
+    setShareLink(null);
+    setCopiedShareLink(false);
+    setIsShareModalOpen(true);
+  };
+
+  const handleGenerateShareLink = async () => {
+    if (!shareSessionId) return;
+    try {
+      setGeneratingShareLink(true);
+      const res = await fetch('/api/share', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ chat_id: shareSessionId }),
+      });
+      
+      const resData = await res.json();
+      if (!res.ok) throw new Error(resData.error || 'Lỗi khi tạo link chia sẻ');
+      
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+      setShareLink(`${baseUrl}/share/${resData.share_id}`);
+    } catch (err: any) {
+      console.error('Error generating share link:', err);
+      setToast({ message: err.message || 'Lỗi khi tạo link chia sẻ', type: 'error' });
+    } finally {
+      setGeneratingShareLink(false);
+    }
+  };
+
+  const handleCopyShareLink = () => {
+    if (!shareLink) return;
+    navigator.clipboard.writeText(shareLink);
+    setCopiedShareLink(true);
+    setTimeout(() => setCopiedShareLink(false), 2000);
+  };
 
   const [disabledModels, setDisabledModels] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' } | null>(null);
@@ -1142,6 +1122,7 @@ Liệt kê theo thứ tự ưu tiên những việc nên làm ngay khi mở lạ
         onDeleteSession={handleDeleteSession}
         onInjectPrompt={handleInjectPrompt}
         onRenameSession={handleRenameSession}
+        onShareSession={handleShareSession}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
         projects={projects}
@@ -1183,6 +1164,7 @@ Liệt kê theo thứ tự ưu tiên những việc nên làm ngay khi mở lạ
           stagedFile={stagedFile}
           setStagedFile={setStagedFile}
           onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+          isMobileOpen={isMobileOpen}
         />
       ) : (
         <ChatWindow
@@ -1210,6 +1192,7 @@ Liệt kê theo thứ tự ưu tiên những việc nên làm ngay khi mở lạ
           onSummarizeChat={handleSummarizeChat}
           stagedFile={stagedFile}
           setStagedFile={setStagedFile}
+          isMobileOpen={isMobileOpen}
         />
       )}
 
@@ -1251,6 +1234,87 @@ Liệt kê theo thứ tự ưu tiên những việc nên làm ngay khi mở lạ
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CHIA SẺ ĐOẠN CHAT CÔNG KHAI */}
+      {isShareModalOpen && (
+        <div className="fixed inset-0 z-[1050] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-md p-6 shadow-2xl animate-in zoom-in-95 duration-200 mx-4">
+            <div className="flex items-center justify-between shrink-0 mb-4 pb-3 border-b border-slate-100">
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <span className="w-8 h-8 rounded-lg bg-red-50 text-markee-primary flex items-center justify-center border border-red-100 shrink-0">
+                  <Share2 className="w-4 h-4 text-markee-primary" />
+                </span>
+                <span>Chia sẻ cuộc trò chuyện</span>
+              </h3>
+              <button
+                onClick={() => setIsShareModalOpen(false)}
+                className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors border-0 bg-transparent cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Tạo một đường dẫn liên kết công khai. Bất kỳ ai có liên kết này đều có thể đọc toàn bộ lịch sử tin nhắn của cuộc hội thoại <strong className="text-slate-700">"{shareSessionTitle}"</strong>.
+              </p>
+
+              {!shareLink ? (
+                <div className="pt-2 flex justify-end gap-3">
+                  <button
+                    onClick={() => setIsShareModalOpen(false)}
+                    className="px-4 py-2 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer bg-white"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    onClick={handleGenerateShareLink}
+                    disabled={generatingShareLink}
+                    className="px-4 py-2 bg-markee-primary hover:bg-markee-hover text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-red-100 border-0 cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    {generatingShareLink && (
+                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin shrink-0" />
+                    )}
+                    <span>{generatingShareLink ? 'Đang tạo link...' : 'Tạo link chia sẻ'}</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3 pt-2">
+                  <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Đường dẫn chia sẻ công khai</div>
+                  <div className="flex items-center justify-between gap-3 bg-slate-50 border border-slate-100 p-3 rounded-xl">
+                    <span className="font-mono text-[11px] text-slate-700 break-all select-all font-semibold">{shareLink}</span>
+                    <button
+                      onClick={handleCopyShareLink}
+                      className="p-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-500 hover:text-slate-800 transition-colors cursor-pointer shrink-0"
+                      title="Sao chép Link"
+                    >
+                      {copiedShareLink ? (
+                        <Check className="w-4 h-4 text-emerald-600 animate-in zoom-in-50 duration-150" />
+                      ) : (
+                        <Copy className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                  <div className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
+                    <span>✓</span> Link chia sẻ đã sẵn sàng hoạt động
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {shareLink && (
+              <div className="border-t border-slate-100 pt-4 mt-5 flex items-center justify-end">
+                <button
+                  onClick={() => setIsShareModalOpen(false)}
+                  className="px-4 py-2 bg-slate-950 hover:bg-slate-850 text-white rounded-xl text-xs font-bold transition-all border-0 cursor-pointer"
+                >
+                  Đóng
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
