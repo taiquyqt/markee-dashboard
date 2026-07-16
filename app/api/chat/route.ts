@@ -50,6 +50,7 @@ Vai trò của bạn:
 
 export async function POST(req: Request) {
   try {
+    const origin = new URL(req.url).origin;
     let user: { id: string; email: string } | null = null;
     let supabase: any = null;
 
@@ -174,21 +175,23 @@ export async function POST(req: Request) {
         const usage = data?.usageMetadata;
         if (usage) {
           console.log("=== SERVER: ĐÃ BẮT ĐƯỢC USAGE (Gemini) ===", usage);
-          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-          fetch(`${baseUrl}/api/log-usage`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              secret_key: process.env.MARKEE_INTERNAL_API_KEY,
-              model: modelName,
-              input_tokens: usage.promptTokenCount || 0,
-              output_tokens: usage.candidatesTokenCount || 0,
-              total_tokens: usage.totalTokenCount || 0,
-              is_free: true,
-            }),
-          })
-            .then((res) => console.log("=== SERVER: GHI LOG WEBHOOK SUCCESS (Gemini) ===", res.status))
-            .catch((err) => console.error("=== SERVER: LỖI GHI LOG (Gemini) ===", err));
+          try {
+            await fetch(`${origin}/api/log-usage`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                secret_key: process.env.MARKEE_INTERNAL_API_KEY,
+                model: modelName,
+                input_tokens: usage.promptTokenCount || 0,
+                output_tokens: usage.candidatesTokenCount || 0,
+                total_tokens: usage.totalTokenCount || 0,
+                is_free: true,
+              }),
+            });
+            console.log("=== SERVER: GHI LOG WEBHOOK SUCCESS (Gemini) ===");
+          } catch (err) {
+            console.error("=== SERVER: LỖI GHI LOG (Gemini) ===", err);
+          }
         }
 
         return NextResponse.json(data);
@@ -202,7 +205,7 @@ export async function POST(req: Request) {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${apiKey}`,
-            "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+            "HTTP-Referer": origin,
             "X-Title": "Markee AI",
           },
           body: JSON.stringify({
@@ -220,21 +223,23 @@ export async function POST(req: Request) {
         const usage = data?.usage;
         if (usage) {
           console.log("=== SERVER: ĐÃ BẮT ĐƯỢC USAGE (OpenRouter) ===", usage);
-          const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-          fetch(`${baseUrl}/api/log-usage`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              secret_key: process.env.MARKEE_INTERNAL_API_KEY,
-              model: data.model || modelName,
-              input_tokens: usage.prompt_tokens || usage.input_tokens || 0,
-              output_tokens: usage.completion_tokens || usage.output_tokens || 0,
-              total_tokens: usage.total_tokens || 0,
-              is_free: true,
-            }),
-          })
-            .then((res) => console.log("=== SERVER: GHI LOG WEBHOOK SUCCESS (OpenRouter) ===", res.status))
-            .catch((err) => console.error("=== SERVER: LỖI GHI LOG (OpenRouter) ===", err));
+          try {
+            await fetch(`${origin}/api/log-usage`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                secret_key: process.env.MARKEE_INTERNAL_API_KEY,
+                model: data.model || modelName,
+                input_tokens: usage.prompt_tokens || usage.input_tokens || 0,
+                output_tokens: usage.completion_tokens || usage.output_tokens || 0,
+                total_tokens: usage.total_tokens || 0,
+                is_free: true,
+              }),
+            });
+            console.log("=== SERVER: GHI LOG WEBHOOK SUCCESS (OpenRouter) ===");
+          } catch (err) {
+            console.error("=== SERVER: LỖI GHI LOG (OpenRouter) ===", err);
+          }
         }
 
         return NextResponse.json(data);
@@ -263,21 +268,23 @@ export async function POST(req: Request) {
       const usage = data?.usage;
       if (usage) {
         console.log("=== SERVER: ĐÃ BẮT ĐƯỢC USAGE (ShopAIKey) ===", usage);
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-        fetch(`${baseUrl}/api/log-usage`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            secret_key: process.env.MARKEE_INTERNAL_API_KEY,
-            model: data.model || modelName,
-            input_tokens: usage.prompt_tokens || usage.input_tokens || 0,
-            output_tokens: usage.completion_tokens || usage.output_tokens || 0,
-            total_tokens: usage.total_tokens || 0,
-            is_free: false,
-          }),
-        })
-          .then((res) => console.log("=== SERVER: GHI LOG WEBHOOK SUCCESS (ShopAIKey) ===", res.status))
-          .catch((err) => console.error("=== SERVER: LỖI GHI LOG (ShopAIKey) ===", err));
+        try {
+          await fetch(`${origin}/api/log-usage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              secret_key: process.env.MARKEE_INTERNAL_API_KEY,
+              model: data.model || modelName,
+              input_tokens: usage.prompt_tokens || usage.input_tokens || 0,
+              output_tokens: usage.completion_tokens || usage.output_tokens || 0,
+              total_tokens: usage.total_tokens || 0,
+              is_free: false,
+            }),
+          });
+          console.log("=== SERVER: GHI LOG WEBHOOK SUCCESS (ShopAIKey) ===");
+        } catch (err) {
+          console.error("=== SERVER: LỖI GHI LOG (ShopAIKey) ===", err);
+        }
       }
 
       return NextResponse.json(data);
@@ -296,11 +303,7 @@ export async function POST(req: Request) {
       },
       onFinish: async (event) => {
         const { text, usage } = event;
-
-        // 1. IN RA RAW DATA ĐỂ DEBUG:
-        console.log("=== RAW DATA TỪ SHOPAIKEY ===");
-        console.log(JSON.stringify(event, null, 2));
-        console.log("=============================");
+        console.log("=== USAGE DEBUG ===", JSON.stringify(usage, null, 2));
 
         if (text) {
           if (sessionId) {
@@ -319,20 +322,14 @@ export async function POST(req: Request) {
           }
         }
 
-        // 2. LẤY USAGE VÀ GỬI WEBHOOK:
-        console.log("=== BẮT ĐẦU GHI LOG ===", usage);
-
         if (usage) {
           try {
-            const isFree = name.includes("gemini") || name.includes("google") || name.includes("auto") || name.includes("free") || name.includes("openrouter");
-
             const rawUsage = usage as any;
-            const input_tokens = rawUsage.promptTokens || rawUsage.inputTokens || 0;
-            const output_tokens = rawUsage.completionTokens || rawUsage.outputTokens || 0;
-            const total_tokens = rawUsage.totalTokens || input_tokens + output_tokens || 0;
+            const input_tokens = rawUsage.promptTokens || 0;
+            const output_tokens = rawUsage.completionTokens || 0;
+            const total_tokens = rawUsage.totalTokens || (input_tokens + output_tokens);
 
-            const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-            const res = await fetch(`${baseUrl}/api/log-usage`, {
+            await fetch(`${origin}/api/log-usage`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -341,12 +338,11 @@ export async function POST(req: Request) {
                 input_tokens,
                 output_tokens,
                 total_tokens,
-                is_free: isFree,
+                is_free: name.includes("gemini") || name.includes("free") || name.includes("auto"),
               }),
             });
-            console.log("=== KẾT QUẢ GHI LOG ===", res.status);
-          } catch (error) {
-            console.error("=== LỖI GHI LOG ===", error);
+          } catch (e) {
+            console.error("=== LỖI GHI LOG ===", e);
           }
         }
       },
