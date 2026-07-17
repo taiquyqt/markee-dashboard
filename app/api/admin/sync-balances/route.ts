@@ -28,8 +28,8 @@ async function sendTelegramAlert(appName: string, balance: number, limit: number
   }
 
   const usagePercent = limit > 0 ? ((limit - balance) / limit) * 100 : 0;
-  
-  const text = `⚠️ <b>CẢNH BÁO SẮP CẠN SỐ DƯ API</b> ⚠️\n\nỨng dụng: <b>${appName}</b>\nHạn mức còn lại: <code>$${balance.toFixed(2)}</code> (~ ${(balance * 3250).toLocaleString('vi-VN')}đ)\nTổng ngân sách cấp: <code>$${limit.toFixed(2)}</code> (~ ${(limit * 3250).toLocaleString('vi-VN')}đ)\nTỷ lệ sử dụng: <b>${usagePercent.toFixed(1)}%</b>\n\n🔴 <i>Vui lòng nạp thêm ngân sách tại ShopAIKey để tránh gián đoạn dịch vụ AI.</i>`;
+
+  const text = `⚠️ <b>CẢNH BÁO SẮP CẠN SỐ DƯ API</b> ⚠️\n\nỨng dụng: <b>${appName}</b>\nHạn mức còn lại: <code>$${balance.toFixed(2)}</code> (~ ${(balance * 3250).toLocaleString("vi-VN")}đ)\nTổng ngân sách cấp: <code>$${limit.toFixed(2)}</code> (~ ${(limit * 3250).toLocaleString("vi-VN")}đ)\nTỷ lệ sử dụng: <b>${usagePercent.toFixed(1)}%</b>\n\n🔴 <i>Vui lòng nạp thêm ngân sách tại ShopAIKey để tránh gián đoạn dịch vụ AI.</i>`;
 
   try {
     const payload: any = {
@@ -66,9 +66,7 @@ export async function POST() {
     const supabaseAdmin = getSupabaseAdmin();
 
     // 1. Lấy tất cả apps
-    const { data: apps, error: appsError } = await supabaseAdmin
-      .from("apps")
-      .select("*");
+    const { data: apps, error: appsError } = await supabaseAdmin.from("apps").select("*");
 
     if (appsError) {
       console.error("Lỗi lấy danh sách apps:", appsError);
@@ -116,16 +114,13 @@ export async function POST() {
         const hardLimitUsd = Math.round(hardLimitUsdRaw * 100) / 100;
 
         // API 2: Lấy lượng đã tiêu dùng (usage)
-        const usageRes = await fetch(
-          `https://api.shopaikey.com/v1/dashboard/billing/usage?start_date=${startDate}&end_date=${endDate}`,
-          {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${key}`,
-            },
-            cache: "no-store",
-          }
-        );
+        const usageRes = await fetch(`https://api.shopaikey.com/v1/dashboard/billing/usage?start_date=${startDate}&end_date=${endDate}`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${key}`,
+          },
+          cache: "no-store",
+        });
 
         if (!usageRes.ok) {
           throw new Error(`Usage API error (HTTP ${usageRes.status})`);
@@ -142,7 +137,7 @@ export async function POST() {
 
         // Logic Cảnh báo Telegram số dư thấp (còn lại <= 10%)
         let isLowBalanceAlerted = app.is_low_balance_alerted || false;
-        
+
         if (hardLimitUsd > 0 && balanceUsd <= hardLimitUsd * 0.1) {
           if (!isLowBalanceAlerted) {
             await sendTelegramAlert(app.name, balanceUsd, hardLimitUsd);
@@ -161,7 +156,7 @@ export async function POST() {
             total_used: totalUsedUsd,
             balance: balanceUsd,
             status,
-            is_low_balance_alerted: isLowBalanceAlerted
+            is_low_balance_alerted: isLowBalanceAlerted,
           })
           .eq("id", app.id);
 
@@ -170,13 +165,11 @@ export async function POST() {
         }
 
         // Insert bảng balance_history
-        const { error: historyError } = await supabaseAdmin
-          .from("balance_history")
-          .insert({
-            app_id: app.id,
-            total_used: totalUsedUsd,
-            balance: balanceUsd,
-          });
+        const { error: historyError } = await supabaseAdmin.from("balance_history").insert({
+          app_id: app.id,
+          total_used: totalUsedUsd,
+          balance: balanceUsd,
+        });
 
         if (historyError) {
           console.error(`Lỗi insert balance_history cho app ${app.name}:`, historyError);
@@ -190,10 +183,9 @@ export async function POST() {
           total_used: totalUsedUsd,
           balance: balanceUsd,
         });
-
       } catch (err: any) {
         console.error(`Lỗi đồng bộ app ${app.name}:`, err.message || err);
-        
+
         // Cập nhật trạng thái lỗi 'depleted'
         await supabaseAdmin
           .from("apps")

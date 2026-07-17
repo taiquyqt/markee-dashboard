@@ -59,6 +59,31 @@ function formatWipFileSize(bytes?: number | null) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
+function parseAttachedFiles(attached_file: any): any[] {
+  if (!attached_file) return [];
+  let parsed = null;
+  if (typeof attached_file === 'object') {
+    parsed = attached_file;
+  } else if (typeof attached_file === 'string') {
+    try {
+      parsed = JSON.parse(attached_file);
+    } catch (e) {
+      return [];
+    }
+  }
+
+  if (Array.isArray(parsed)) {
+    return parsed;
+  }
+  
+  if (parsed && parsed.storage_path) {
+    return [parsed];
+  }
+
+  return [];
+}
+
+
 interface SummaryItem {
   title: string;
   insights: string[];
@@ -136,6 +161,9 @@ export default function ProjectDetailContent({
   const [editContent, setEditContent] = useState('');
   const [editTrack, setEditTrack] = useState('');
   const [isEditingWIP, setIsEditingWIP] = useState(false);
+  const [editAttachedFiles, setEditAttachedFiles] = useState<any[]>([]);
+  const [removedFiles, setRemovedFiles] = useState<any[]>([]);
+  const [isUploadingWipFiles, setIsUploadingWipFiles] = useState(false);
 
   const [activeMoveWIP, setActiveMoveWIP] = useState<AISession | null>(null);
   const [newProjectId, setNewProjectId] = useState<number | ''>('');
@@ -305,16 +333,29 @@ export default function ProjectDetailContent({
     if (!activeEditWIP) return;
     setIsEditingWIP(true);
     try {
-      const { error } = await supabase
-        .from('skill_library')
-        .update({
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      const res = await fetch('/api/wip', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          id: activeEditWIP.id,
           title: editTitle,
           markdown_content: editContent,
-          team_track: editTrack
+          team_track: editTrack,
+          attached_file: editAttachedFiles,
+          removed_files: removedFiles
         })
-        .eq('id', activeEditWIP.id);
+      });
 
-      if (error) throw error;
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'Lỗi khi sửa bản nháp');
+      }
 
       showToast('Cập nhật bản nháp thành công!', 'success');
 
@@ -323,15 +364,63 @@ export default function ProjectDetailContent({
         title: editTitle,
         prompt_content: editContent,
         team_track: editTrack,
+        attached_file: editAttachedFiles
       } : l));
 
       setActiveEditWIP(null);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error editing WIP:', err);
-      showToast('Lỗi khi sửa bản nháp', 'error');
+      showToast(err.message || 'Lỗi khi sửa bản nháp', 'error');
     } finally {
       setIsEditingWIP(false);
     }
+  }
+
+  async function handleUploadWipFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setIsUploadingWipFiles(true);
+    try {
+      const newFilesArray = [...editAttachedFiles];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const fileExt = file.name.split('.').pop();
+        const uniqueName = `${Date.now()}_${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
+        const filePath = `skill_attachments/${uniqueName}`;
+
+        const { error: uploadErr } = await supabase.storage
+          .from('chat_attachments')
+          .upload(filePath, file);
+
+        if (uploadErr) throw uploadErr;
+
+        newFilesArray.push({
+          name: file.name,
+          file_name: file.name,
+          size: file.size,
+          size_bytes: file.size,
+          type: file.type,
+          mime_type: file.type,
+          storage_path: filePath
+        });
+      }
+      setEditAttachedFiles(newFilesArray);
+      showToast(`Đã tải lên thành công ${files.length} file!`, 'success');
+    } catch (err) {
+      console.error('Error uploading WIP files:', err);
+      showToast('Lỗi khi tải file lên', 'error');
+    } finally {
+      setIsUploadingWipFiles(false);
+      e.target.value = '';
+    }
+  }
+
+  function handleRemoveWipFile(indexToRemove: number) {
+    const fileToRemove = editAttachedFiles[indexToRemove];
+    if (fileToRemove.storage_path) {
+      setRemovedFiles(prev => [...prev, fileToRemove]);
+    }
+    setEditAttachedFiles(prev => prev.filter((_, idx) => idx !== indexToRemove));
   }
 
   async function handleSummarizeProject() {
@@ -727,6 +816,9 @@ export default function ProjectDetailContent({
                                             setEditTitle(log.title || '');
                                             setEditContent(log.prompt_content || '');
                                             setEditTrack(log.team_track || '');
+                                            const files = parseAttachedFiles(log.attached_file);
+                                            setEditAttachedFiles(files);
+                                            setRemovedFiles([]);
                                           }}
                                           className="p-1 rounded hover:bg-slate-100 border border-slate-200 transition-colors flex items-center justify-center text-gray-500 hover:text-markee-primary cursor-pointer bg-white"
                                         >
@@ -764,51 +856,57 @@ export default function ProjectDetailContent({
                                   )}
                                   <PromptText text={log.prompt_content} />
                                   {(() => {
-                                    let parsed = null;
-                                    if (log.attached_file) {
-                                      if (typeof log.attached_file === 'object') {
-                                        parsed = log.attached_file;
-                                      } else if (typeof log.attached_file === 'string') {
-                                        try {
-                                          parsed = JSON.parse(log.attached_file);
-                                        } catch (e) {}
-                                      }
-                                    }
-                                    if (!parsed?.storage_path) return null;
+                                    const files = parseAttachedFiles(log.attached_file);
+                                    if (files.length === 0) return null;
                                     return (
-                                      <div className="mt-3 bg-slate-50 border border-slate-100 rounded-lg p-2.5 flex items-center justify-between gap-3 text-xs bg-white">
-                                        <div className="flex items-center gap-2 min-w-0">
-                                          <span className="text-base shrink-0">📎</span>
-                                          <span className="font-semibold text-slate-700 truncate" title={parsed.file_name}>
-                                            {parsed.file_name}
-                                          </span>
-                                          <span className="text-[10px] text-slate-400 shrink-0 font-medium">
-                                            ({formatWipFileSize(parsed.size_bytes)})
-                                          </span>
-                                        </div>
-                                        <div className="flex items-center gap-2 shrink-0">
-                                          <button
-                                            type="button"
-                                            onClick={() => setPreviewFile({
-                                              file_name: parsed.file_name,
-                                              storage_path: parsed.storage_path,
-                                              mime_type: parsed.mime_type || '',
-                                              source_url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/chat_attachments/${parsed.storage_path}`
-                                            })}
-                                            className="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-800 font-bold rounded text-[11px] transition-colors flex items-center gap-1 cursor-pointer font-sans"
-                                          >
-                                            👁️ Xem trước
-                                          </button>
-                                          <a
-                                            href={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/chat_attachments/${parsed.storage_path}?download=${parsed.file_name}`}
-                                            download={parsed.file_name}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-200 text-markee-primary hover:text-red-700 font-bold rounded text-[11px] transition-colors flex items-center gap-1 cursor-pointer font-sans"
-                                          >
-                                            Tải xuống
-                                          </a>
-                                        </div>
+                                      <div 
+                                        className="mt-3 flex flex-wrap gap-2 max-h-[220px] overflow-y-auto pr-1"
+                                        style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}
+                                      >
+                                        {files.map((file: any, fileIdx: number) => {
+                                          const fName = file.name || file.file_name || 'attachment';
+                                          const fSize = file.size || file.size_bytes || 0;
+                                          const fType = file.type || file.mime_type || '';
+                                          const sPath = file.storage_path || '';
+                                          const sourceUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/chat_attachments/${sPath}`;
+                                          
+                                          return (
+                                            <div key={fileIdx} className="bg-slate-50 border border-slate-100 rounded-lg p-2 flex items-center justify-between gap-2 text-xs bg-white w-full sm:w-[48%] min-w-[200px] shrink-0 grow">
+                                              <div className="flex items-center gap-1.5 min-w-0">
+                                                <span className="text-sm shrink-0">📎</span>
+                                                <span className="font-semibold text-slate-700 truncate text-[11px]" title={fName}>
+                                                  {fName}
+                                                </span>
+                                                <span className="text-[9px] text-slate-400 shrink-0 font-medium">
+                                                  ({formatWipFileSize(fSize)})
+                                                </span>
+                                              </div>
+                                              <div className="flex items-center gap-1 shrink-0">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => setPreviewFile({
+                                                    file_name: fName,
+                                                    storage_path: sPath,
+                                                    mime_type: fType,
+                                                    source_url: sourceUrl
+                                                  })}
+                                                  className="px-1.5 py-0.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-800 font-bold rounded text-[10px] transition-colors flex items-center gap-0.5 cursor-pointer font-sans"
+                                                >
+                                                  👁️ Xem
+                                                </button>
+                                                <a
+                                                  href={`${sourceUrl}?download=${fName}`}
+                                                  download={fName}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className="px-1.5 py-0.5 bg-white hover:bg-slate-100 border border-slate-200 text-markee-primary hover:text-red-700 font-bold rounded text-[10px] transition-colors flex items-center gap-0.5 cursor-pointer font-sans"
+                                                >
+                                                  Tải về
+                                                </a>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
                                       </div>
                                     );
                                   })()}
@@ -895,12 +993,70 @@ export default function ProjectDetailContent({
                 </label>
                 <textarea
                   id="editWipContentInput"
-                  rows={10}
+                  rows={8}
                   value={editContent}
                   onChange={(e) => setEditContent(e.target.value)}
                   placeholder="Nhập nội dung markdown..."
                   className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white focus:outline-none font-mono"
                 />
+              </div>
+
+              {/* Đính kèm tài liệu (Upload nhiều file) */}
+              <div className="border-t border-slate-100 pt-4 mt-2">
+                <label className="block text-xs font-semibold text-markee-text mb-1.5">
+                  Đính kèm tài liệu (Đa file)
+                </label>
+                
+                {/* Upload input button */}
+                <div className="flex items-center gap-2 mb-3">
+                  <input
+                    id="wipFileUploadInput"
+                    type="file"
+                    multiple
+                    disabled={isUploadingWipFiles}
+                    onChange={handleUploadWipFiles}
+                    className="hidden"
+                  />
+                  <label
+                    htmlFor="wipFileUploadInput"
+                    className={`px-3 py-2 border border-dashed border-slate-300 hover:border-markee-primary rounded-lg text-xs font-semibold hover:bg-slate-50 cursor-pointer flex items-center gap-1.5 transition-colors select-none ${isUploadingWipFiles ? 'opacity-50 pointer-events-none' : ''}`}
+                  >
+                    <span>📎</span>
+                    <span>{isUploadingWipFiles ? 'Đang tải lên...' : 'Chọn các file đính kèm...'}</span>
+                  </label>
+                </div>
+
+                {/* Danh sách file đã đính kèm */}
+                {editAttachedFiles.length > 0 && (
+                  <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
+                    {editAttachedFiles.map((file, idx) => {
+                      const fName = file.name || file.file_name || 'attachment';
+                      const fSize = file.size || file.size_bytes || 0;
+                      
+                      return (
+                         <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 border border-slate-100 rounded-lg text-xs">
+                           <div className="flex items-center gap-2 min-w-0">
+                             <span className="shrink-0 text-sm">📄</span>
+                             <span className="font-semibold text-slate-700 truncate text-[11px] max-w-[200px]" title={fName}>
+                               {fName}
+                             </span>
+                             <span className="text-[9px] text-slate-400 shrink-0 font-medium">
+                               ({formatWipFileSize(fSize)})
+                             </span>
+                           </div>
+                           <button
+                             type="button"
+                             onClick={() => handleRemoveWipFile(idx)}
+                             className="text-red-500 hover:text-red-700 transition-colors p-1 border-0 bg-transparent cursor-pointer font-bold shrink-0 text-xs"
+                             title="Gỡ bỏ"
+                           >
+                             ✕
+                           </button>
+                         </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
