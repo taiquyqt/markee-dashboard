@@ -667,6 +667,7 @@ export interface Project {
   type?: 'WIP_GLOBAL' | 'PERSONAL';
   department_id?: number;
   team_id?: number;
+  customer_id?: number | null;
 }
 
 export interface AISession {
@@ -686,6 +687,7 @@ export interface AISession {
   attached_file?: any;
   department_id?: number;
   team_id?: number;
+  feature_name?: string | null;
 }
 
 export async function fetchAllUsers(): Promise<AppUser[]> {
@@ -987,11 +989,12 @@ export async function fetchProjectSessionsForUser(projectId: number, authorId: s
 export async function createNewProject(
   name: string,
   userEmail: string,
-  type: "WIP_GLOBAL" | "PERSONAL" = "WIP_GLOBAL"
+  type: "WIP_GLOBAL" | "PERSONAL" = "WIP_GLOBAL",
+  customerId?: string | null
 ): Promise<Project> {
   const { data, error } = await supabase
     .from("projects")
-    .insert({ name, created_by: userEmail, type })
+    .insert({ name, created_by: userEmail, type, customer_id: customerId })
     .select("*")
     .single();
 

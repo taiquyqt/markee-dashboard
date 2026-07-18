@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -157,29 +158,31 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
   const [projectPage, setProjectPage] = useState(0);
   const [openMenuProjectId, setOpenMenuProjectId] = useState<number | null>(null);
 
-  const [departments, setDepartments] = useState<{ id: number; name: string }[]>([]);
-  const [teams, setTeams] = useState<{ id: number; name: string; department_id: number }[]>([]);
-  const [selectedDeptId, setSelectedDeptId] = useState<number | null>(null);
-  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
+  const [customers, setCustomers] = useState<{ id: string; name: string }[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
 
   useEffect(() => {
-    async function loadDeptsAndTeams() {
+    async function loadCustomers() {
       try {
-        const { data: deptData } = await supabase.from('departments').select('id, name');
-        setDepartments(deptData || []);
-        const { data: teamData } = await supabase.from('teams').select('id, name, department_id');
-        setTeams(teamData || []);
+        const { data, error } = await supabase.from('customers').select('id, name').order('name');
+        if (!error) {
+          setCustomers(data || []);
+        }
       } catch (e) {
-        console.error('Error fetching depts/teams:', e);
+        console.error('Error fetching customers:', e);
       }
     }
-    loadDeptsAndTeams();
+    loadCustomers();
   }, []);
 
   const PROJECT_PAGE_SIZE = 9;
   const filteredProjects = useMemo(() => {
-    return projects.filter(p => p.name.toLowerCase().includes(projectSearch.toLowerCase()));
-  }, [projects, projectSearch]);
+    return projects.filter(p => {
+      const matchSearch = p.name.toLowerCase().includes(projectSearch.toLowerCase());
+      const matchCustomer = selectedCustomerId === '' || String(p.customer_id) === selectedCustomerId;
+      return matchSearch && matchCustomer;
+    });
+  }, [projects, projectSearch, selectedCustomerId]);
 
   const displayedProjects = useMemo(() => {
     const start = projectPage * PROJECT_PAGE_SIZE;
@@ -188,7 +191,7 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
 
   useEffect(() => {
     setProjectPage(0);
-  }, [projectSearch]);
+  }, [projectSearch, selectedCustomerId]);
 
   const router = useRouter();
   const pathname = usePathname();
@@ -231,6 +234,9 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [projectName, setProjectName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [customerMode, setCustomerMode] = useState<'select' | 'create'>('select');
+  const [projCustomerId, setProjCustomerId] = useState<string>('');
+  const [newCustomerName, setNewCustomerName] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'loading' } | null>(null);
 
   // Summary states
@@ -264,6 +270,9 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
   const [activeEditProject, setActiveEditProject] = useState<Project | null>(null);
   const [editProjectName, setEditProjectName] = useState('');
   const [isEditingProject, setIsEditingProject] = useState(false);
+  const [editCustomerMode, setEditCustomerMode] = useState<'select' | 'create'>('select');
+  const [editProjCustomerId, setEditProjCustomerId] = useState<string>('');
+  const [editNewCustomerName, setEditNewCustomerName] = useState('');
 
   const [activeDeleteProject, setActiveDeleteProject] = useState<Project | null>(null);
   const [isDeletingProject, setIsDeletingProject] = useState(false);
@@ -271,6 +280,9 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
   function handleEditProjectOpen(proj: Project) {
     setActiveEditProject(proj);
     setEditProjectName(proj.name);
+    setEditProjCustomerId(proj.customer_id ? String(proj.customer_id) : '');
+    setEditCustomerMode('select');
+    setEditNewCustomerName('');
   }
 
   async function handleEditProjectSubmit(e: React.FormEvent) {
@@ -280,22 +292,63 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
     setIsEditingProject(true);
     showToast('Đang cập nhật dự án...', 'loading');
     try {
+      let targetCustomerId: string | null = null;
+
+      if (editCustomerMode === 'create') {
+        const trimmedCustName = editNewCustomerName.trim();
+        if (!trimmedCustName) {
+          showToast('Vui lòng nhập tên khách hàng mới', 'error');
+          setIsEditingProject(false);
+          return;
+        }
+
+        const { data: newCust, error: custErr } = await supabase
+          .from('customers')
+          .insert({ name: trimmedCustName })
+          .select('id, name')
+          .single();
+
+        if (custErr) throw custErr;
+        
+        targetCustomerId = newCust.id;
+        setCustomers(prev => [...prev, newCust].sort((a, b) => a.name.localeCompare(b.name)));
+      } else {
+        if (!editProjCustomerId) {
+          showToast('Vui lòng chọn khách hàng', 'error');
+          setIsEditingProject(false);
+          return;
+        }
+        targetCustomerId = editProjCustomerId;
+      }
+
       const { error } = await supabase
         .from('projects')
-        .update({ name: trimmed })
+        .update({ 
+          name: trimmed,
+          customer_id: targetCustomerId
+        })
         .eq('id', activeEditProject.id);
 
       if (error) throw error;
 
       showToast('Cập nhật dự án thành công!', 'success');
-      setProjects(prev => prev.map(p => p.id === activeEditProject.id ? { ...p, name: trimmed } : p));
+      setProjects(prev => prev.map(p => p.id === activeEditProject.id ? { 
+        ...p, 
+        name: trimmed,
+        customer_id: targetCustomerId ? Number(targetCustomerId) : null
+      } : p));
+      
       if (selectedProject?.id === activeEditProject.id) {
-        setSelectedProject(prev => prev ? { ...prev, name: trimmed } : null);
+        setSelectedProject(prev => prev ? { 
+          ...prev, 
+          name: trimmed,
+          customer_id: targetCustomerId ? Number(targetCustomerId) : null
+        } : null);
       }
       setActiveEditProject(null);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error editing project:', err);
-      showToast('Lỗi khi cập nhật dự án', 'error');
+      showToast(err.message || 'Lỗi khi cập nhật dự án', 'error');
     } finally {
       setIsEditingProject(false);
     }
@@ -484,9 +537,41 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
   async function handleCreateProject() {
     const trimmedName = projectName.trim();
     if (!trimmedName) return;
+
+    let targetCustomerId: string | null = null;
+
     setIsCreating(true);
     try {
-      const newProject = await createNewProject(trimmedName, profile.email, 'WIP_GLOBAL');
+      if (customerMode === 'create') {
+        const trimmedCustName = newCustomerName.trim();
+        if (!trimmedCustName) {
+          showToast('Vui lòng nhập tên khách hàng mới', 'error');
+          setIsCreating(false);
+          return;
+        }
+
+        // Tạo khách hàng mới trước
+        const { data: newCust, error: custErr } = await supabase
+          .from('customers')
+          .insert({ name: trimmedCustName })
+          .select('id, name')
+          .single();
+
+        if (custErr) throw custErr;
+        
+        targetCustomerId = newCust.id;
+        // Cập nhật danh sách local
+        setCustomers(prev => [...prev, newCust].sort((a, b) => a.name.localeCompare(b.name)));
+      } else {
+        if (!projCustomerId) {
+          showToast('Vui lòng chọn khách hàng', 'error');
+          setIsCreating(false);
+          return;
+        }
+        targetCustomerId = projCustomerId;
+      }
+
+      const newProject = await createNewProject(trimmedName, profile.email, 'WIP_GLOBAL', targetCustomerId);
       const projectWithAuthor: Project = {
         ...newProject,
         logCount: 0,
@@ -497,9 +582,12 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
       showToast('Tạo dự án mới thành công!', 'success');
       setIsCreateModalOpen(false);
       setProjectName('');
-    } catch (err) {
+      setNewCustomerName('');
+      setProjCustomerId('');
+      setCustomerMode('select');
+    } catch (err: any) {
       console.error(err);
-      showToast('Lỗi khi tạo dự án mới', 'error');
+      showToast(err.message || 'Lỗi khi tạo dự án mới', 'error');
     } finally {
       setIsCreating(false);
     }
@@ -508,7 +596,7 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
   async function loadProjects() {
     setLoading(true);
     try {
-      const data = await fetchProjects(undefined, false, 'WIP_GLOBAL', selectedDeptId, selectedTeamId);
+      const data = await fetchProjects(undefined, false, 'WIP_GLOBAL', null, null);
       setProjects(data);
     } finally {
       setLoading(false);
@@ -662,7 +750,7 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
 
   useEffect(() => {
     loadProjects();
-  }, [selectedDeptId, selectedTeamId]);
+  }, []);
 
   useEffect(() => {
     const openModalId = searchParams.get('open_modal_id');
@@ -720,41 +808,20 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
           />
         </div>
 
-        {/* Dept Select */}
-        <div className="w-48">
+        {/* Customer Select */}
+        <div className="w-56">
           <select
-            value={selectedDeptId || ''}
+            value={selectedCustomerId}
             onChange={(e) => {
-              const val = e.target.value ? Number(e.target.value) : null;
-              setSelectedDeptId(val);
-              setSelectedTeamId(null);
+              const val = e.target.value ? e.target.value : '';
+              setSelectedCustomerId(val);
             }}
             className="w-full rounded-xl border border-markee-border bg-white px-3.5 py-2.5 text-base md:text-xs font-semibold text-markee-text focus:border-markee-primary outline-none transition-colors cursor-pointer"
           >
-            <option value="">Tất cả phòng ban</option>
-            {departments.map((dept) => (
-              <option key={dept.id} value={dept.id}>{dept.name}</option>
+            <option value="">Tất cả khách hàng</option>
+            {customers.map((cust) => (
+              <option key={cust.id} value={cust.id}>{cust.name}</option>
             ))}
-          </select>
-        </div>
-
-        {/* Team Select */}
-        <div className="w-48">
-          <select
-            value={selectedTeamId || ''}
-            disabled={!selectedDeptId}
-            onChange={(e) => {
-              const val = e.target.value ? Number(e.target.value) : null;
-              setSelectedTeamId(val);
-            }}
-            className="w-full rounded-xl border border-markee-border bg-white px-3.5 py-2.5 text-base md:text-xs font-semibold text-markee-text focus:border-markee-primary outline-none transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <option value="">Tất cả team</option>
-            {teams
-              .filter(t => selectedDeptId === null || t.department_id === selectedDeptId)
-              .map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
           </select>
         </div>
       </div>
@@ -777,7 +844,15 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
                     {/* Header */}
                     <div className="flex justify-between items-start gap-2 relative">
                       <div className="min-w-0 flex-1">
-                        <h3 className="text-lg font-bold text-markee-text truncate group-hover:text-markee-primary transition-colors">
+                        {(() => {
+                          const customer = customers.find(c => c.id === String(project.customer_id));
+                          return (
+                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-0.5" title="Khách hàng">
+                              {customer ? customer.name : 'Vãng lai'}
+                            </span>
+                          );
+                        })()}
+                        <h3 className="text-lg font-bold text-markee-text truncate group-hover:text-markee-primary transition-colors leading-snug">
                           {project.name}
                         </h3>
                         <p className="text-xs text-markee-muted truncate mt-1">
@@ -786,8 +861,7 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
                       </div>
 
                       {/* Action Menu (Kebab) cho Project */}
-                      {(project.created_by === profile.email || profile.role === 'admin' || profile.role === 'super_admin') && (
-                        <div className="relative z-10 shrink-0">
+                      <div className="relative z-10 shrink-0">
                           <button
                             type="button"
                             onClick={(e) => {
@@ -850,8 +924,7 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
                             </>
                           )}
                         </div>
-                      )}
-                    </div>
+                      </div>
 
                     {/* Stats */}
                     <div className="grid grid-cols-3 gap-2 border-y border-gray-100 py-3">
@@ -971,12 +1044,67 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
                 }}
               />
             </div>
+
+            {/* Customer Section */}
+            <div className="space-y-3">
+              <label className="block text-xs font-semibold text-markee-text">
+                Khách hàng
+              </label>
+              
+              {/* Tab Selector */}
+              <div className="flex bg-slate-100 p-0.5 rounded-lg text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setCustomerMode('select')}
+                  className={`flex-1 py-1.5 rounded-md text-center transition-colors cursor-pointer ${customerMode === 'select' ? 'bg-white shadow-xs text-markee-text' : 'text-markee-muted hover:text-markee-text'}`}
+                >
+                  Chọn khách hàng cũ
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCustomerMode('create')}
+                  className={`flex-1 py-1.5 rounded-md text-center transition-colors cursor-pointer ${customerMode === 'create' ? 'bg-white shadow-xs text-markee-text' : 'text-markee-muted hover:text-markee-text'}`}
+                >
+                  ➕ Tạo khách hàng mới
+                </button>
+              </div>
+
+              {/* Mode Select */}
+              {customerMode === 'select' ? (
+                <div>
+                  <select
+                    value={projCustomerId}
+                    onChange={(e) => setProjCustomerId(e.target.value ? e.target.value : '')}
+                    className="w-full px-3 py-2 text-base md:text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary cursor-pointer"
+                  >
+                    <option value="">-- Chọn khách hàng --</option>
+                    {customers.map((cust) => (
+                      <option key={cust.id} value={cust.id}>{cust.name}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <input
+                    type="text"
+                    value={newCustomerName}
+                    onChange={(e) => setNewCustomerName(e.target.value)}
+                    placeholder="Nhập tên khách hàng mới..."
+                    className="w-full px-3 py-2 text-base md:text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary"
+                  />
+                </div>
+              )}
+            </div>
+
             <div className="flex justify-end gap-2.5 pt-2">
               <button
                 type="button"
                 onClick={() => {
                   setIsCreateModalOpen(false);
                   setProjectName('');
+                  setNewCustomerName('');
+                  setProjCustomerId('');
+                  setCustomerMode('select');
                 }}
                 className="px-4 py-2 border border-markee-border bg-white text-markee-muted hover:bg-markee-bg hover:text-markee-text rounded-lg transition-colors text-xs font-semibold cursor-pointer"
               >
@@ -985,7 +1113,7 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
               <button
                 type="button"
                 onClick={handleCreateProject}
-                disabled={isCreating || !projectName.trim()}
+                disabled={isCreating || !projectName.trim() || (customerMode === 'select' && !projCustomerId) || (customerMode === 'create' && !newCustomerName.trim())}
                 className="px-4 py-2 bg-markee-primary hover:bg-markee-hover disabled:bg-markee-primary/60 text-white rounded-lg transition-colors text-xs font-semibold cursor-pointer"
               >
                 {isCreating ? 'Đang tạo...' : 'Tạo mới'}
@@ -1019,12 +1147,67 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
                   autoFocus
                 />
               </div>
+
+              {/* Edit Customer Section */}
+              <div className="space-y-3">
+                <label className="block text-xs font-semibold text-markee-text">
+                  Khách hàng
+                </label>
+                
+                {/* Tab Selector */}
+                <div className="flex bg-slate-100 p-0.5 rounded-lg text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setEditCustomerMode('select')}
+                    className={`flex-1 py-1.5 rounded-md text-center transition-colors cursor-pointer ${editCustomerMode === 'select' ? 'bg-white shadow-xs text-markee-text' : 'text-markee-muted hover:text-markee-text'}`}
+                  >
+                    Chọn khách hàng cũ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditCustomerMode('create')}
+                    className={`flex-1 py-1.5 rounded-md text-center transition-colors cursor-pointer ${editCustomerMode === 'create' ? 'bg-white shadow-xs text-markee-text' : 'text-markee-muted hover:text-markee-text'}`}
+                  >
+                    ➕ Tạo khách hàng mới
+                  </button>
+                </div>
+
+                {/* Mode Select */}
+                {editCustomerMode === 'select' ? (
+                  <div>
+                    <select
+                      value={editProjCustomerId}
+                      onChange={(e) => setEditProjCustomerId(e.target.value ? e.target.value : '')}
+                      className="w-full px-3 py-2 text-base md:text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary cursor-pointer"
+                    >
+                      <option value="">-- Chọn khách hàng --</option>
+                      {customers.map((cust) => (
+                        <option key={cust.id} value={cust.id}>{cust.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div>
+                    <input
+                      type="text"
+                      value={editNewCustomerName}
+                      onChange={(e) => setEditNewCustomerName(e.target.value)}
+                      placeholder="Nhập tên khách hàng mới..."
+                      className="w-full px-3 py-2 text-base md:text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none focus:ring-1 focus:ring-markee-primary focus:border-markee-primary"
+                    />
+                  </div>
+                )}
+              </div>
+
               <div className="flex justify-end gap-2.5 pt-2">
                 <button
                   type="button"
                   onClick={() => {
                     setActiveEditProject(null);
                     setEditProjectName('');
+                    setEditNewCustomerName('');
+                    setEditProjCustomerId('');
+                    setEditCustomerMode('select');
                   }}
                   className="px-4 py-2 border border-markee-border bg-white text-markee-muted hover:bg-markee-bg hover:text-markee-text rounded-lg transition-colors text-xs font-semibold cursor-pointer"
                   disabled={isEditingProject}
@@ -1033,7 +1216,7 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
                 </button>
                 <button
                   type="submit"
-                  disabled={isEditingProject || !editProjectName.trim()}
+                  disabled={isEditingProject || !editProjectName.trim() || (editCustomerMode === 'select' && !editProjCustomerId) || (editCustomerMode === 'create' && !editNewCustomerName.trim())}
                   className="px-4 py-2 bg-markee-primary hover:bg-markee-hover disabled:bg-markee-primary/60 text-white rounded-lg transition-colors text-xs font-semibold cursor-pointer"
                 >
                   {isEditingProject ? 'Đang lưu...' : 'Lưu thay đổi'}
@@ -1053,7 +1236,7 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
                 ⚠️ Xác nhận Xóa Dự Án
               </h2>
               <p className="text-xs text-gray-600 leading-relaxed mt-2">
-                Bạn có chắc chắn muốn xóa dự án <strong className="text-gray-900">"{activeDeleteProject.name}"</strong> không? Hành động này không thể hoàn tác.
+                Bạn có chắc chắn muốn xóa dự án <strong className="text-gray-900">&quot;{activeDeleteProject.name}&quot;</strong> không? Hành động này không thể hoàn tác.
               </p>
             </div>
             <div className="flex justify-end gap-2.5 pt-2">

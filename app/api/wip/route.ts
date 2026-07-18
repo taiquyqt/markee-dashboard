@@ -10,7 +10,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { id, title, markdown_content, team_track, attached_file, removed_files } = body;
+    const { id, title, markdown_content, team_track, attached_file, removed_files, feature_name } = body;
 
     if (!id) {
       return NextResponse.json({ error: "Missing WIP id" }, { status: 400 });
@@ -52,7 +52,8 @@ export async function POST(req: Request) {
         title,
         markdown_content,
         team_track,
-        attached_file
+        attached_file,
+        feature_name
       })
       .eq("id", id)
       .select("*")

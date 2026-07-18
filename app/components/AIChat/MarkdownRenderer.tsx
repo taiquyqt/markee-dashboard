@@ -26,7 +26,7 @@ const preprocessMarkdown = (text: string) => {
 export function MarkdownRenderer({ content }: MarkdownRendererProps) {
   const processedContent = preprocessMarkdown(content);
   return (
-    <div className="markdown-body break-words prose prose-sm max-w-none dark:prose-invert">
+    <div className="markdown-body wrap-break-word prose prose-sm max-w-none dark:prose-invert">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
@@ -57,7 +57,7 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
           h1: ({ children }) => <h1 className="text-xl font-bold my-4 text-gray-900 border-b border-gray-100 pb-1">{children}</h1>,
           h2: ({ children }) => <h2 className="text-lg font-bold my-3 text-gray-900">{children}</h2>,
           h3: ({ children }) => <h3 className="text-base font-bold my-2 text-gray-900">{children}</h3>,
-          p: ({ children }) => <p className="my-2 leading-relaxed text-sm text-gray-700 break-words whitespace-pre-wrap">{children}</p>,
+          p: ({ children }) => <p className="my-2 leading-relaxed text-sm text-gray-700 wrap-break-word whitespace-pre-wrap">{children}</p>,
           a: ({ href, children }) => (
             <a
               href={href}

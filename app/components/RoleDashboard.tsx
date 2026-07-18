@@ -137,12 +137,15 @@ function AdminOverview({
   period,
   onPeriodChange,
   loading = false,
+  profile,
 }: {
   metrics: AdminOverviewMetrics;
   period: AnalyticsPeriod;
   onPeriodChange: (period: AnalyticsPeriod) => void;
   loading?: boolean;
+  profile: UserProfile;
 }) {
+  const isAdmin = profile.role === 'admin' || profile.role === 'super_admin';
   const periodOptions: { id: AnalyticsPeriod; label: string }[] = [
     { id: '7d', label: '7 ngày' },
     { id: '30d', label: '30 ngày' },
@@ -153,8 +156,12 @@ function AdminOverview({
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-bold text-markee-text">Tổng quan quản trị</h2>
-          <p className="text-xs text-markee-muted">Theo dõi mức sử dụng AI và đóng góp kỹ năng của đội ngũ.</p>
+          <h2 className="text-base font-bold text-markee-text">
+            {isAdmin ? 'Tổng quan quản trị' : 'Tổng quan sử dụng'}
+          </h2>
+          <p className="text-xs text-markee-muted">
+            {isAdmin ? 'Theo dõi mức sử dụng AI và đóng góp kỹ năng của đội ngũ.' : 'Theo dõi mức độ sử dụng AI cá nhân.'}
+          </p>
         </div>
         <div className="flex gap-1 rounded-xl border border-markee-border bg-white p-1">
           {periodOptions.map((option) => (
@@ -288,16 +295,22 @@ function AdminDashboard({
     loadAdminData();
   }, [period]);
 
+  const isAdmin = profile.role === 'admin' || profile.role === 'super_admin';
+
   return (
     <main className="mx-auto max-w-7xl space-y-5 p-5">
       <section className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-bold text-markee-text">Khu vực quản trị</h1>
-          <p className="text-xs text-markee-muted">Xin chào {profile.displayName}. Theo dõi hoạt động AI của đội ngũ.</p>
+          <h1 className="text-lg font-bold text-markee-text">
+            {isAdmin ? 'Khu vực quản trị' : 'Tổng quan hoạt động'}
+          </h1>
+          <p className="text-xs text-markee-muted">
+            Xin chào {profile.displayName || profile.email}. {isAdmin ? 'Theo dõi hoạt động AI của đội ngũ.' : 'Theo dõi hoạt động sử dụng AI của bạn.'}
+          </p>
         </div>
       </section>
 
-      <AdminOverview metrics={metrics} period={period} onPeriodChange={setPeriod} loading={loading} />
+      <AdminOverview metrics={metrics} period={period} onPeriodChange={setPeriod} loading={loading} profile={profile} />
     </main>
   );
 }
@@ -311,7 +324,6 @@ export default function RoleDashboard() {
   const isCloningRef = useRef(false);
   const [libraryRefreshKey, setLibraryRefreshKey] = useState(0);
 
-  // Center AI (ops.markeeai.com) giờ gộp chung domain, chạy ở /dev. Nút chuyển qua chỉ hiện cho
   // đúng những acc đã được add làm nhân viên bên Center AI — kiểm tra thật bằng cách đổi thử
   // token Google đang có sang employee_token của Center AI, không hard-code danh sách email ở
   // đây (Center AI's "employees" table mới là nguồn dữ liệu đúng, tự thêm/bớt người không cần
@@ -394,7 +406,7 @@ export default function RoleDashboard() {
       _setActiveTab('projects');
     } else {
       if (profile) {
-        _setActiveTab((profile.role === 'admin' || profile.role === 'super_admin') ? 'overview' : 'library');
+        _setActiveTab('overview');
       }
     }
   }, [searchParams, profile?.role]);
@@ -457,12 +469,7 @@ export default function RoleDashboard() {
     };
   }, []);
 
-  // Auto redirect user to library tab if their role is user
-  useEffect(() => {
-    if (profile && profile.role === 'user') {
-      _setActiveTab('library');
-    }
-  }, [profile?.role]);
+
 
   // ==========================================
   // 2. EARLY RETURN CHO UI ĐẶT Ở DƯỚI CÙNG
@@ -477,7 +484,7 @@ export default function RoleDashboard() {
           <button
             type="button"
             onClick={login}
-            className="mt-5 w-full rounded-lg bg-[#E3000F] px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 transition-colors cursor-pointer border-0 shadow-sm"
+            className="mt-5 w-full rounded-lg bg-markee-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 transition-colors cursor-pointer border-0 shadow-sm"
           >
             Đăng nhập Google
           </button>
@@ -487,9 +494,9 @@ export default function RoleDashboard() {
   }
 
   return (
-    <div className="flex h-[100dvh] overflow-hidden bg-markee-bg text-markee-text font-sans">
+    <div className="flex h-dvh overflow-hidden bg-markee-bg text-markee-text font-sans">
       {/* Sidebar (Cột trái) */}
-      <aside className={`fixed md:relative inset-y-0 left-0 z-[999] bg-white border-r border-markee-border flex flex-col transition-all duration-300 transform ${isMobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} ${isCollapsed ? 'w-72 md:w-20' : 'w-72 md:w-64'} shrink-0`}>
+      <aside className={`fixed md:relative inset-y-0 left-0 z-999 bg-white border-r border-markee-border flex flex-col transition-all duration-300 transform ${isMobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'} ${isCollapsed ? 'w-72 md:w-20' : 'w-72 md:w-64'} shrink-0`}>
         {/* Logo & Toggle */}
         <div className={`p-4 border-b border-markee-border flex items-center justify-between ${isCollapsed ? 'flex-col gap-3 justify-center' : ''}`}>
           <div className="flex items-center gap-3">
@@ -525,21 +532,19 @@ export default function RoleDashboard() {
 
         {/* Menu Items */}
         <nav className="p-4 flex-1 space-y-1 overflow-y-auto">
-          {(profile.role === 'admin' || profile.role === 'super_admin') && (
-            <Link
-              href="?tab=overview"
-              scroll={false}
-              prefetch={false}
-              onClick={(e) => { e.stopPropagation(); setActiveTab('overview'); }}
-              className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'} ${activeTab === 'overview'
-                  ? 'bg-markee-primary text-white shadow-md shadow-red-100'
-                  : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
-                }`}
-            >
-              <span>📊</span>
-              <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Tổng quan</span>
-            </Link>
-          )}
+          <Link
+            href="?tab=overview"
+            scroll={false}
+            prefetch={false}
+            onClick={(e) => { e.stopPropagation(); setActiveTab('overview'); }}
+            className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'} ${activeTab === 'overview'
+                ? 'bg-markee-primary text-white shadow-md shadow-red-100'
+                : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
+              }`}
+          >
+            <span>📊</span>
+            <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Tổng quan</span>
+          </Link>
 
           <Link
             href="?tab=ai_chat"
@@ -585,21 +590,19 @@ export default function RoleDashboard() {
             </Link>
           )}
 
-          {(profile.role === 'admin' || profile.role === 'super_admin') && (
-            <Link
-              href="?tab=projects"
-              scroll={false}
-              prefetch={false}
-              onClick={(e) => { e.stopPropagation(); setActiveTab('projects'); }}
-              className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'} ${activeTab === 'projects'
-                  ? 'bg-markee-primary text-white shadow-md shadow-red-100'
-                  : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
-                }`}
-            >
-              <span>📁</span>
-              <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Quản Lý dự án</span>
-            </Link>
-          )}
+          <Link
+            href="?tab=projects"
+            scroll={false}
+            prefetch={false}
+            onClick={(e) => { e.stopPropagation(); setActiveTab('projects'); }}
+            className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'} ${activeTab === 'projects'
+                ? 'bg-markee-primary text-white shadow-md shadow-red-100'
+                : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
+              }`}
+          >
+            <span>📁</span>
+            <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Quản Lý dự án</span>
+          </Link>
 
           <Link
             href="?tab=knowledge_hub"
@@ -731,7 +734,7 @@ export default function RoleDashboard() {
       {isMobileOpen && (
         <div
           onClick={() => setIsMobileOpen(false)}
-          className="fixed inset-0 bg-black/40 z-[990] md:hidden animate-in fade-in duration-200"
+          className="fixed inset-0 bg-black/40 z-990 md:hidden animate-in fade-in duration-200"
         />
       )}
 
@@ -770,7 +773,7 @@ export default function RoleDashboard() {
             <button
               type="button"
               onClick={logout}
-              className="rounded-lg border border-markee-border bg-white px-3.5 py-1.5 text-xs font-semibold text-markee-text hover:bg-markee-bg transition-colors shadow-xs cursor-pointer border-0"
+              className="rounded-lg border border-markee-border bg-white px-3.5 py-1.5 text-xs font-semibold text-markee-text hover:bg-markee-bg transition-colors shadow-xs cursor-pointer"
             >
               Đăng xuất
             </button>
@@ -782,7 +785,7 @@ export default function RoleDashboard() {
           {(activeTab === 'ai_chat' || activeTab === 'chat-folders') && (
             <AIChat profile={profile} isMobileOpen={isMobileOpen} />
           )}
-          {activeTab === 'overview' && (profile.role === 'admin' || profile.role === 'super_admin') && (
+          {activeTab === 'overview' && (
             <AdminDashboard
               profile={profile}
             />

@@ -88,17 +88,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Không tìm thấy dự án" }, { status: 404 });
     }
 
-    // 2. Kiểm tra quyền sở hữu (chỉ người tạo hoặc admin mới được chia sẻ)
-    const { data: userDb } = await supabaseAdmin
-      .from("users")
-      .select("role")
-      .eq("email", user.email)
-      .maybeSingle();
 
-    const isAdmin = userDb && ["admin", "super_admin"].includes(userDb.role);
-    if (project.created_by !== user.email && !isAdmin) {
-      return NextResponse.json({ error: "Bạn không có quyền chia sẻ dự án này" }, { status: 403 });
-    }
 
     let share_token = project.share_token;
 

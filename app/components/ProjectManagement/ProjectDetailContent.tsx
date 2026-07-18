@@ -159,11 +159,14 @@ export default function ProjectDetailContent({
   const [activeEditWIP, setActiveEditWIP] = useState<AISession | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
-  const [editTrack, setEditTrack] = useState('');
+  const [editFeatureName, setEditFeatureName] = useState('');
   const [isEditingWIP, setIsEditingWIP] = useState(false);
   const [editAttachedFiles, setEditAttachedFiles] = useState<any[]>([]);
   const [removedFiles, setRemovedFiles] = useState<any[]>([]);
   const [isUploadingWipFiles, setIsUploadingWipFiles] = useState(false);
+  const [features, setFeatures] = useState<string[]>([]);
+  const [selectedFeature, setSelectedFeature] = useState<string>('');
+  const [selectedWipFileIdx, setSelectedWipFileIdx] = useState<{ [logId: number]: number }>({});
 
   const [activeMoveWIP, setActiveMoveWIP] = useState<AISession | null>(null);
   const [newProjectId, setNewProjectId] = useState<number | ''>('');
@@ -260,6 +263,33 @@ export default function ProjectDetailContent({
     }
   }
 
+  const filteredLogs = useMemo(() => {
+    if (!selectedFeature) return logs;
+    return logs.filter(log => log.feature_name === selectedFeature);
+  }, [logs, selectedFeature]);
+
+  async function loadProjectFeatures() {
+    if (!project?.id) return;
+    try {
+      const { data, error } = await supabase
+        .from('skill_library')
+        .select('feature_name')
+        .eq('project_id', project.id)
+        .not('feature_name', 'is', null);
+      
+      if (!error && data) {
+        const uniqueFeatures = Array.from(new Set(data.map(d => d.feature_name).filter(Boolean))) as string[];
+        setFeatures(uniqueFeatures.sort());
+      }
+    } catch (e) {
+      console.error('Error fetching project features:', e);
+    }
+  }
+
+  useEffect(() => {
+    loadProjectFeatures();
+  }, [project?.id]);
+
   async function handleDeleteWIP() {
     if (!activeDeleteWIP) return;
     setIsDeletingWIP(true);
@@ -346,7 +376,7 @@ export default function ProjectDetailContent({
           id: activeEditWIP.id,
           title: editTitle,
           markdown_content: editContent,
-          team_track: editTrack,
+          feature_name: editFeatureName,
           attached_file: editAttachedFiles,
           removed_files: removedFiles
         })
@@ -363,9 +393,12 @@ export default function ProjectDetailContent({
         ...l,
         title: editTitle,
         prompt_content: editContent,
-        team_track: editTrack,
+        feature_name: editFeatureName,
         attached_file: editAttachedFiles
       } : l));
+
+      // Load lại các tính năng (features) của dự án để cập nhật Autocomplete
+      loadProjectFeatures();
 
       setActiveEditWIP(null);
     } catch (err: any) {
@@ -718,16 +751,39 @@ export default function ProjectDetailContent({
 
               {/* Right Timeline Panel */}
               <div className="flex-1 overflow-y-auto pl-2 flex flex-col pr-1 h-full">
+                {/* Feature Filter Select */}
+                <div className="mb-4 flex items-center justify-between border-b border-markee-border pb-3 shrink-0">
+                  <h4 className="text-xs font-bold text-markee-text flex items-center gap-1.5 uppercase tracking-wider">
+                    <span>🎯</span> Lọc theo tính năng
+                  </h4>
+                  <div className="w-52">
+                    <select
+                      value={selectedFeature}
+                      onChange={(e) => setSelectedFeature(e.target.value)}
+                      className="w-full rounded-lg border border-markee-border bg-white px-2.5 py-1.5 text-xs font-semibold text-markee-text focus:border-markee-primary outline-none transition-colors cursor-pointer"
+                    >
+                      <option value="">Tất cả tính năng</option>
+                      {features.map((f) => (
+                        <option key={f} value={f}>{f}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
                 {logsLoading && logs.length === 0 ? (
                   <div className="text-center py-10 text-sm text-markee-sub">Đang tải nhật ký hoạt động...</div>
                 ) : logs.length === 0 ? (
                   <div className="text-center py-10 text-sm text-markee-sub">
                     Không có log hoạt động nào.
                   </div>
+                ) : filteredLogs.length === 0 ? (
+                  <div className="text-center py-10 text-sm text-markee-sub">
+                    Không tìm thấy bản nháp nào khớp với tính năng này.
+                  </div>
                 ) : (
                   <div className="space-y-6">
                     <div className="relative border-l-2 border-markee-border pl-6 ml-3 space-y-8">
-                      {logs.map((log) => {
+                      {filteredLogs.map((log) => {
                         const dateStr = new Date(log.created_at).toLocaleString('vi-VN', {
                           hour: '2-digit',
                           minute: '2-digit',
@@ -799,9 +855,9 @@ export default function ProjectDetailContent({
                                           Của bạn
                                         </span>
                                       )}
-                                      {log.team_track && (
+                                      {log.feature_name && (
                                         <span className="ml-1 px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 text-[9px] font-bold border border-purple-100">
-                                          {log.team_track}
+                                          {log.feature_name}
                                         </span>
                                       )}
                                     </div>
@@ -815,7 +871,7 @@ export default function ProjectDetailContent({
                                             setActiveEditWIP(log);
                                             setEditTitle(log.title || '');
                                             setEditContent(log.prompt_content || '');
-                                            setEditTrack(log.team_track || '');
+                                            setEditFeatureName(log.feature_name || '');
                                             const files = parseAttachedFiles(log.attached_file);
                                             setEditAttachedFiles(files);
                                             setRemovedFiles([]);
@@ -858,55 +914,81 @@ export default function ProjectDetailContent({
                                   {(() => {
                                     const files = parseAttachedFiles(log.attached_file);
                                     if (files.length === 0) return null;
+
+                                    const currentIdx = selectedWipFileIdx[log.id] ?? 0;
+                                    const file = files[currentIdx] || files[0];
+
+                                    const fName = file.name || file.file_name || 'attachment';
+                                    const fSize = file.size || file.size_bytes || 0;
+                                    const fType = file.type || file.mime_type || '';
+                                    const sPath = file.storage_path || '';
+                                    const sourceUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/chat_attachments/${sPath}`;
+
                                     return (
-                                      <div 
-                                        className="mt-3 flex flex-wrap gap-2 max-h-[220px] overflow-y-auto pr-1"
-                                        style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}
-                                      >
-                                        {files.map((file: any, fileIdx: number) => {
-                                          const fName = file.name || file.file_name || 'attachment';
-                                          const fSize = file.size || file.size_bytes || 0;
-                                          const fType = file.type || file.mime_type || '';
-                                          const sPath = file.storage_path || '';
-                                          const sourceUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/chat_attachments/${sPath}`;
+                                      <div className="mt-3 bg-slate-50 border border-slate-100 rounded-lg p-2.5 flex flex-col gap-2.5 text-xs bg-white">
+                                        {/* Tiêu đề & Chọn file (nếu có từ 2 file trở lên) */}
+                                        <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-1.5 shrink-0">
+                                          <div className="flex items-center gap-1">
+                                            <span className="text-sm">📎</span>
+                                            <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">
+                                              Tài liệu đính kèm ({files.length})
+                                            </span>
+                                          </div>
                                           
-                                          return (
-                                            <div key={fileIdx} className="bg-slate-50 border border-slate-100 rounded-lg p-2 flex items-center justify-between gap-2 text-xs bg-white w-full sm:w-[48%] min-w-[200px] shrink-0 grow">
-                                              <div className="flex items-center gap-1.5 min-w-0">
-                                                <span className="text-sm shrink-0">📎</span>
-                                                <span className="font-semibold text-slate-700 truncate text-[11px]" title={fName}>
-                                                  {fName}
-                                                </span>
-                                                <span className="text-[9px] text-slate-400 shrink-0 font-medium">
-                                                  ({formatWipFileSize(fSize)})
-                                                </span>
-                                              </div>
-                                              <div className="flex items-center gap-1 shrink-0">
-                                                <button
-                                                  type="button"
-                                                  onClick={() => setPreviewFile({
-                                                    file_name: fName,
-                                                    storage_path: sPath,
-                                                    mime_type: fType,
-                                                    source_url: sourceUrl
-                                                  })}
-                                                  className="px-1.5 py-0.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-800 font-bold rounded text-[10px] transition-colors flex items-center gap-0.5 cursor-pointer font-sans"
-                                                >
-                                                  👁️ Xem
-                                                </button>
-                                                <a
-                                                  href={`${sourceUrl}?download=${fName}`}
-                                                  download={fName}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  className="px-1.5 py-0.5 bg-white hover:bg-slate-100 border border-slate-200 text-markee-primary hover:text-red-700 font-bold rounded text-[10px] transition-colors flex items-center gap-0.5 cursor-pointer font-sans"
-                                                >
-                                                  Tải về
-                                                </a>
-                                              </div>
-                                            </div>
-                                          );
-                                        })}
+                                          {files.length > 1 && (
+                                            <select
+                                              value={currentIdx}
+                                              onChange={(e) => {
+                                                const val = Number(e.target.value);
+                                                setSelectedWipFileIdx(prev => ({ ...prev, [log.id]: val }));
+                                              }}
+                                              className="text-[10px] font-bold text-markee-primary bg-white border border-slate-200 rounded px-1.5 py-0.5 outline-none cursor-pointer hover:border-markee-primary transition-colors max-w-[150px] truncate"
+                                            >
+                                              {files.map((f: any, fIdx: number) => (
+                                                <option key={fIdx} value={fIdx}>
+                                                  {f.name || f.file_name || `Tài liệu ${fIdx + 1}`}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          )}
+                                        </div>
+
+                                        {/* Render duy nhất file được chọn */}
+                                        <div className="flex items-center justify-between gap-2 bg-white border border-slate-100 rounded-lg p-2">
+                                          <div className="flex items-center gap-1.5 min-w-0">
+                                            <span className="text-sm shrink-0">📄</span>
+                                            <span className="font-semibold text-slate-700 truncate text-[11px]" title={fName}>
+                                              {fName}
+                                            </span>
+                                            <span className="text-[9px] text-slate-400 shrink-0 font-medium">
+                                              ({formatWipFileSize(fSize)})
+                                            </span>
+                                          </div>
+                                          
+                                          <div className="flex items-center gap-1 shrink-0">
+                                            <button
+                                              type="button"
+                                              onClick={() => setPreviewFile({
+                                                file_name: fName,
+                                                storage_path: sPath,
+                                                mime_type: fType,
+                                                source_url: sourceUrl
+                                              })}
+                                              className="px-1.5 py-0.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-800 font-bold rounded text-[10px] transition-colors flex items-center gap-0.5 cursor-pointer font-sans"
+                                            >
+                                              👁️ Xem
+                                            </button>
+                                            <a
+                                              href={`${sourceUrl}?download=${fName}`}
+                                              download={fName}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="px-1.5 py-0.5 bg-white hover:bg-slate-100 border border-slate-200 text-markee-primary hover:text-red-700 font-bold rounded text-[10px] transition-colors flex items-center gap-0.5 cursor-pointer font-sans"
+                                            >
+                                              Tải về
+                                            </a>
+                                          </div>
+                                        </div>
                                       </div>
                                     );
                                   })()}
@@ -969,22 +1051,23 @@ export default function ProjectDetailContent({
               </div>
 
               <div>
-                <label htmlFor="editWipTrackSelect" className="block text-xs font-semibold text-markee-text mb-1.5">
-                  Phòng ban (Track)
+                <label htmlFor="editWipFeatureInput" className="block text-xs font-semibold text-markee-text mb-1.5">
+                  Tính năng
                 </label>
-                <select
-                  id="editWipTrackSelect"
-                  value={editTrack}
-                  onChange={(e) => setEditTrack(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white focus:outline-none"
-                >
-                  <option value="">Khác</option>
-                  <option value="Track 1: SI Delivery">Track 1: SI Delivery</option>
-                  <option value="Track 2: Marketing">Track 2: Marketing</option>
-                  <option value="Track 3: Dev + DevOps">Track 3: Dev + DevOps</option>
-                  <option value="Track 4: AI Team">Track 4: AI Team</option>
-                  <option value="Track 5: Sales">Track 5: Sales</option>
-                </select>
+                <input
+                  id="editWipFeatureInput"
+                  list="projectFeaturesDatalist"
+                  type="text"
+                  value={editFeatureName}
+                  onChange={(e) => setEditFeatureName(e.target.value)}
+                  placeholder="Nhập hoặc chọn tính năng..."
+                  className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none"
+                />
+                <datalist id="projectFeaturesDatalist">
+                  {features.map((f, idx) => (
+                    <option key={idx} value={f} />
+                  ))}
+                </datalist>
               </div>
 
               <div>
