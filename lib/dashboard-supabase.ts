@@ -715,6 +715,28 @@ export async function updateUserRole(userId: number, role: UserRole) {
   }
 }
 
+// Thêm user thủ công (không qua đăng nhập Google thật) — dùng để test gán gói/license cho
+// nhiều người khi chưa có đủ người dùng thật đăng nhập. Khớp bằng email (không phải auth UID)
+// nên user tạo tay vẫn gán được vào assigned_users của license bình thường; chỉ không tự đăng
+// nhập được cho tới khi có tài khoản Google thật trùng đúng email này.
+export async function createUser(email: string, full_name: string): Promise<AppUser> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const res = await fetch("/api/admin/create-user", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+    },
+    body: JSON.stringify({ email, full_name }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: "Lỗi tạo user" }));
+    throw new Error(err.error || "Lỗi tạo user");
+  }
+  const { user } = await res.json();
+  return user;
+}
+
 export async function fetchProjects(
   userEmail?: string,
   isAdmin = false,

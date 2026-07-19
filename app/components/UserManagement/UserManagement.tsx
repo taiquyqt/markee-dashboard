@@ -9,6 +9,7 @@ import {
   fetchAILicenses,
   fetchAIUsageStats,
   updateUserRole,
+  createUser,
   createAILicense,
   updateAILicense,
   type AppUser,
@@ -116,6 +117,33 @@ export default function UserManagement({ profile }: { profile: UserProfile }) {
       showToast('Không thể tải danh sách người dùng', 'error');
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Thêm user thủ công — trước đây chỉ có được qua đăng nhập Google thật, không có cách nào
+  // tạo user để test gán gói/license cho nhiều người. User tạo tay khớp bằng email nên gán vào
+  // license (assigned_users) bình thường; chỉ không tự đăng nhập được cho tới khi có tài khoản
+  // Google thật trùng email.
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [creatingUser, setCreatingUser] = useState(false);
+  async function handleCreateUser(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newUserName.trim() || !newUserEmail.trim()) {
+      showToast('Cần nhập đủ tên và email', 'error');
+      return;
+    }
+    setCreatingUser(true);
+    try {
+      await createUser(newUserEmail.trim(), newUserName.trim());
+      showToast('Đã thêm user', 'success');
+      setNewUserName('');
+      setNewUserEmail('');
+      await loadUsers();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Lỗi tạo user', 'error');
+    } finally {
+      setCreatingUser(false);
     }
   }
 
@@ -436,6 +464,44 @@ export default function UserManagement({ profile }: { profile: UserProfile }) {
       {/* Tab 1: Users */}
       {activeTab === 'users' && (
         <>
+          {/* Thêm user thủ công — để test gán 1 gói cho nhiều user khi chưa đủ người đăng nhập
+              Google thật. User tạo tay chưa đăng nhập được cho tới khi có tài khoản Google trùng
+              đúng email này. */}
+          <form
+            onSubmit={handleCreateUser}
+            className="mb-4 flex flex-wrap items-end gap-3 bg-white p-4 rounded-xl border border-markee-border shadow-3xs shrink-0"
+          >
+            <div>
+              <label className="block text-[10px] font-bold text-markee-muted uppercase tracking-wider mb-1">Tên</label>
+              <input
+                value={newUserName}
+                onChange={(e) => setNewUserName(e.target.value)}
+                placeholder="Nguyễn Văn A"
+                className="rounded-lg border border-markee-border bg-white px-3 py-1.5 text-xs font-medium text-markee-text focus:border-markee-primary outline-none transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-markee-muted uppercase tracking-wider mb-1">Email</label>
+              <input
+                type="email"
+                value={newUserEmail}
+                onChange={(e) => setNewUserEmail(e.target.value)}
+                placeholder="test01@gmail.com"
+                className="rounded-lg border border-markee-border bg-white px-3 py-1.5 text-xs font-medium text-markee-text focus:border-markee-primary outline-none transition-colors"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={creatingUser}
+              className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-markee-primary text-white hover:bg-markee-hover transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              {creatingUser ? 'Đang thêm...' : '+ Thêm user'}
+            </button>
+            <span className="text-[10px] text-markee-muted">
+              Tạo user để gán vào gói/license test — chưa đăng nhập Google thật thì chưa vào hệ thống được.
+            </span>
+          </form>
+
           {/* Bộ lọc Role */}
           <div className="mb-4 flex items-center justify-between bg-white p-4 rounded-xl border border-markee-border shadow-3xs shrink-0">
             <div className="flex items-center gap-2">
