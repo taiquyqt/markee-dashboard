@@ -30,9 +30,10 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── Smooth scroll ── */
+/* ── Smooth scroll & layout stability ── */
 html {
   scroll-behavior: smooth;
+  scrollbar-gutter: stable;
 }
 
 /* ── Scrollbar (WebKit + Firefox) ── */

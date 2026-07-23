@@ -8,6 +8,8 @@ import {
   type UserProfile,
 } from '@/lib/dashboard-supabase';
 
+import { supabase } from '@/lib/supabase';
+
 interface AuthContextType {
   user: UserProfile | null;
   isLoading: boolean;
@@ -18,65 +20,118 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const USER_CACHE_KEY = 'markee_cached_user_profile';
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isMounted, setIsMounted] = useState<boolean>(false);
 
-  async function loadProfile() {
-    setIsLoading(true);
+  async function loadProfile(isSilent = false) {
+    if (!isSilent && !user) {
+      setIsLoading(true);
+    }
     try {
       const profile = await getCurrentUserProfile();
-      setUser(profile);
-      if (profile && typeof window !== 'undefined') {
-        const redirectUrl = sessionStorage.getItem('login_redirect_url');
-        if (redirectUrl) {
-          sessionStorage.removeItem('login_redirect_url');
-          window.location.href = redirectUrl;
-          return;
+      if (profile) {
+        setUser(profile);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(USER_CACHE_KEY, JSON.stringify(profile));
+          const redirectUrl = sessionStorage.getItem('login_redirect_url');
+          if (redirectUrl) {
+            sessionStorage.removeItem('login_redirect_url');
+            if (redirectUrl !== window.location.href) {
+              window.location.href = redirectUrl;
+              return;
+            }
+          }
+        }
+      } else {
+        setUser(null);
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem(USER_CACHE_KEY);
         }
       }
     } catch (e) {
       console.error('Error loadProfile in AuthProvider:', e);
+      setUser(null);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem(USER_CACHE_KEY);
+      }
     } finally {
       setIsLoading(false);
     }
   }
 
   useEffect(() => {
-    loadProfile();
+    setIsMounted(true);
+    let hasCache = false;
+    try {
+      const cached = localStorage.getItem(USER_CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed) {
+          setUser(parsed);
+          setIsLoading(false);
+          hasCache = true;
+        }
+      }
+    } catch (e) {
+      console.error('Error parsing cached profile:', e);
+    }
+
+    loadProfile(hasCache);
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, _session) => {
+      if (event === 'SIGNED_IN') {
+        loadProfile(false);
+      } else if (event === 'TOKEN_REFRESHED') {
+        loadProfile(true);
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem(USER_CACHE_KEY);
+        }
+        setIsLoading(false);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const login = async () => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('login_redirect_url', window.location.href);
+    }
     return signInWithGoogle();
   };
 
   const logout = async () => {
     await signOut();
     setUser(null);
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(USER_CACHE_KEY);
+    }
   };
 
   const refreshProfile = async () => {
     try {
       const profile = await getCurrentUserProfile();
       setUser(profile);
+      if (profile && typeof window !== 'undefined') {
+        localStorage.setItem(USER_CACHE_KEY, JSON.stringify(profile));
+      }
     } catch (e) {
       console.error(e);
     }
   };
 
-  const [isShareRoute, setIsShareRoute] = useState(false);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const path = window.location.pathname;
-      setIsShareRoute(path.startsWith('/share/') || path.startsWith('/shared/'));
-    }
-  }, []);
-
-  if (isLoading) {
+  if (!isMounted || (isLoading && !user)) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#f8fafc] text-sm text-[#64748b]">
-        <div className="flex flex-col items-center gap-3">
+      <div className="flex min-h-screen items-center justify-center bg-[#f8fafc] text-sm text-[#64748b]" suppressHydrationWarning>
+        <div className="flex flex-col items-center gap-3" suppressHydrationWarning>
           <div className="w-8 h-8 border-4 border-[#E3000F] border-t-transparent rounded-full animate-spin" />
           <p className="font-semibold text-slate-700 animate-pulse">Đang kiểm tra đăng nhập...</p>
         </div>
@@ -84,7 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user && !isShareRoute) {
+  if (!user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#f8fafc] p-5 text-[#1e293b]">
         <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 text-center shadow-lg">

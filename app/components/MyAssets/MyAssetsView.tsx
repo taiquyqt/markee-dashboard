@@ -247,7 +247,21 @@ export default function MyAssetsView({ profile }: { profile: UserProfile }) {
       </section>
 
       {loading ? (
-        <div className="text-center py-10 text-sm text-markee-sub">Đang tải tài sản AI của bạn...</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between min-h-64 animate-pulse">
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <div className="h-5 w-24 bg-slate-200 rounded-lg" />
+                  <div className="h-4 w-16 bg-slate-200 rounded-md" />
+                </div>
+                <div className="h-4 w-3/4 bg-slate-100 rounded" />
+                <div className="h-4 w-1/2 bg-slate-100 rounded" />
+              </div>
+              <div className="h-8 w-full bg-slate-100 rounded-lg mt-4" />
+            </div>
+          ))}
+        </div>
       ) : licenses.length === 0 ? (
         <div className="bg-white rounded-xl border border-markee-border p-8 text-center text-markee-sub text-sm">
           Bạn chưa được cấp tài khoản AI nào. Vui lòng liên hệ Admin để được cấp bản quyền.

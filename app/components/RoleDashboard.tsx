@@ -8,7 +8,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { BookOpen, Files, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { BookOpen, Files, Menu, PanelLeftClose, PanelLeftOpen, ChevronDown, ChevronRight } from 'lucide-react';
 import {
   Area,
   AreaChart,
@@ -45,6 +45,8 @@ import KnowledgeHubDashboard from './KnowledgeHub/KnowledgeHubDashboard';
 import MyAssetsView from './MyAssets/MyAssetsView';
 import UserManagement from './UserManagement/UserManagement';
 import ApiManagementDashboard from './ApiManagement/ApiManagementDashboard';
+import SystemManagementView from './ResourceManagement/SystemManagementView';
+import VpsResourceView from './ResourceManagement/VpsResourceView';
 
 const TOOL_COLORS = ['#E3000F', '#FF3344', '#f59e0b', '#a855f7', '#059669', '#0d9488'];
 
@@ -61,7 +63,7 @@ function formatCurrency(value: number) {
 
 function roleLabel(role: UserProfile['role']) {
   if (role === 'super_admin') return 'Super Admin';
-  return role === 'admin' ? 'Quản trị viên' : 'Người dùng';
+  return role === 'admin' ? 'Admin' : 'Người dùng';
 }
 
 function StatCard({
@@ -315,7 +317,24 @@ function AdminDashboard({
   );
 }
 
-export default function RoleDashboard() {
+export type TabType =
+  | 'overview'
+  | 'library'
+  | 'projects'
+  | 'users'
+  | 'assets'
+  | 'knowledge_hub'
+  | 'ai_chat'
+  | 'chat-folders'
+  | 'quan-ly-file'
+  | 'quan-ly-vps'
+  | 'giam-sat-vps'
+  | 'skill_approval'
+  | 'api_management'
+  | 'resource-system'
+  | 'resource-vps';
+
+export default function RoleDashboard({ initialTab }: { initialTab?: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -367,19 +386,43 @@ export default function RoleDashboard() {
     source_url: string;
   } | null>(null);
 
-  const [activeTab, _setActiveTab] = useState<'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file' | 'quan-ly-vps' | 'giam-sat-vps' | 'skill_approval' | 'api_management'>(() => {
+  const [prevPathname, setPrevPathname] = useState(pathname);
+  const [manualToggle, setManualToggle] = useState<boolean | null>(null);
+
+  if (prevPathname !== pathname) {
+    setPrevPathname(pathname);
+    setManualToggle(null);
+  }
+
+  const isKnowledgeRoute = pathname.startsWith('/knowledge-hub');
+  const isKnowledgeDropdownOpen = manualToggle !== null ? manualToggle : isKnowledgeRoute;
+
+  const [activeTab, _setActiveTab] = useState<TabType>(() => {
+    if (initialTab) {
+      if (initialTab === 'users' || initialTab === 'api_management') return 'resource-system';
+      if (initialTab === 'quan-ly-vps' || initialTab === 'giam-sat-vps') return 'resource-vps';
+      return initialTab as TabType;
+    }
     if (typeof window !== 'undefined') {
       const searchParams = new URLSearchParams(window.location.search);
       const tab = searchParams.get('tab');
-      if (tab === 'my-space' || tab === 'shared') {
-        return 'library';
+      if (tab === 'my-space' || tab === 'shared') return 'library';
+      if (tab === 'users' || tab === 'api_management') return 'resource-system';
+      if (tab === 'quan-ly-vps' || tab === 'giam-sat-vps') return 'resource-vps';
+      if (tab && ['overview', 'library', 'projects', 'users', 'assets', 'knowledge_hub', 'ai_chat', 'chat-folders', 'quan-ly-file', 'quan-ly-vps', 'giam-sat-vps', 'skill_approval', 'api_management', 'resource-system', 'resource-vps'].includes(tab)) {
+        return tab as TabType;
       }
-      if (tab && ['overview', 'library', 'projects', 'users', 'assets', 'knowledge_hub', 'ai_chat', 'chat-folders', 'quan-ly-file', 'quan-ly-vps', 'giam-sat-vps', 'skill_approval', 'api_management'].includes(tab)) {
-        return tab as 'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file' | 'quan-ly-vps' | 'giam-sat-vps' | 'skill_approval' | 'api_management';
-      }
-      if (window.location.pathname.startsWith('/projects')) {
-        return 'projects';
-      }
+      const p = window.location.pathname;
+      if (p === '/overview') return 'overview';
+      if (p === '/ai-chat') return 'ai_chat';
+      if (p.startsWith('/projects')) return 'projects';
+      if (p === '/knowledge-hub') return 'knowledge_hub';
+      if (p === '/knowledge-hub/skill-library') return 'library';
+      if (p === '/knowledge-hub/skill-approval') return 'skill_approval';
+      if (p === '/knowledge-hub/files') return 'quan-ly-file';
+      if (p === '/my-assets' || p === '/my-ai-accounts') return 'assets';
+      if (p.startsWith('/resource-management/system')) return 'resource-system';
+      if (p.startsWith('/resource-management/vps')) return 'resource-vps';
     }
     return 'overview';
   });
@@ -388,28 +431,61 @@ export default function RoleDashboard() {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
-  const setActiveTab = (tab: 'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file' | 'quan-ly-vps' | 'giam-sat-vps' | 'skill_approval' | 'api_management') => {
+  const setActiveTab = (tab: TabType) => {
     _setActiveTab(tab);
     setIsMobileOpen(false);
-    const params = new URLSearchParams();
+    const params = new URLSearchParams(searchParams.toString());
     params.set('tab', tab);
-    router.replace(`${pathname}?${params.toString()}`);
+
+    let path = '/';
+    if (tab === 'overview') path = '/overview';
+    else if (tab === 'ai_chat') path = '/ai-chat';
+    else if (tab === 'projects') path = '/projects';
+    else if (tab === 'knowledge_hub') path = '/knowledge-hub';
+    else if (tab === 'library') path = '/knowledge-hub/skill-library';
+    else if (tab === 'skill_approval') path = '/knowledge-hub/skill-approval';
+    else if (tab === 'quan-ly-file') path = '/knowledge-hub/files';
+    else if (tab === 'assets') path = '/my-assets';
+    else if (tab === 'resource-system' || tab === 'users' || tab === 'api_management') path = '/resource-management/system';
+    else if (tab === 'resource-vps' || tab === 'quan-ly-vps' || tab === 'giam-sat-vps') path = '/resource-management/vps';
+
+    router.replace(`${path}?${params.toString()}`);
   };
 
   useEffect(() => {
     const tab = searchParams.get('tab');
     if (tab === 'my-space' || tab === 'shared') {
       _setActiveTab('library');
-    } else if (tab && ['overview', 'library', 'projects', 'users', 'assets', 'knowledge_hub', 'ai_chat', 'chat-folders', 'quan-ly-file', 'quan-ly-vps', 'giam-sat-vps', 'skill_approval', 'api_management'].includes(tab)) {
-      _setActiveTab(tab as 'overview' | 'library' | 'projects' | 'users' | 'assets' | 'knowledge_hub' | 'ai_chat' | 'chat-folders' | 'quan-ly-file' | 'quan-ly-vps' | 'giam-sat-vps' | 'skill_approval' | 'api_management');
-    } else if (window.location.pathname.startsWith('/projects')) {
+    } else if (tab === 'users' || tab === 'api_management') {
+      _setActiveTab('resource-system');
+    } else if (tab === 'quan-ly-vps' || tab === 'giam-sat-vps') {
+      _setActiveTab('resource-vps');
+    } else if (tab && ['overview', 'library', 'projects', 'users', 'assets', 'knowledge_hub', 'ai_chat', 'chat-folders', 'quan-ly-file', 'quan-ly-vps', 'giam-sat-vps', 'skill_approval', 'api_management', 'resource-system', 'resource-vps'].includes(tab)) {
+      _setActiveTab(tab as TabType);
+    } else if (pathname === '/overview') {
+      _setActiveTab('overview');
+    } else if (pathname === '/ai-chat') {
+      _setActiveTab('ai_chat');
+    } else if (pathname.startsWith('/projects')) {
       _setActiveTab('projects');
-    } else {
-      if (profile) {
-        _setActiveTab('overview');
-      }
+    } else if (pathname === '/knowledge-hub') {
+      _setActiveTab('knowledge_hub');
+    } else if (pathname === '/knowledge-hub/skill-library') {
+      _setActiveTab('library');
+    } else if (pathname === '/knowledge-hub/skill-approval') {
+      _setActiveTab('skill_approval');
+    } else if (pathname === '/knowledge-hub/files') {
+      _setActiveTab('quan-ly-file');
+    } else if (pathname === '/my-assets' || pathname === '/my-ai-accounts') {
+      _setActiveTab('assets');
+    } else if (pathname.startsWith('/resource-management/system')) {
+      _setActiveTab('resource-system');
+    } else if (pathname.startsWith('/resource-management/vps')) {
+      _setActiveTab('resource-vps');
+    } else if (pathname === '/') {
+      _setActiveTab('overview');
     }
-  }, [searchParams, profile?.role]);
+  }, [searchParams, pathname]);
 
   useEffect(() => {
     if (!profile) return; // Chỉ chạy khi đã login
@@ -444,6 +520,7 @@ export default function RoleDashboard() {
 
             // Nhân bản thành công -> chuyển sang tab chat và mở thẳng session vừa clone
             router.replace(`/?tab=ai_chat&session_id=${data.new_session_id}`);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           } catch (err: any) {
             console.error("Lỗi clone chat từ localStorage:", err);
             alert(err.message || "Lỗi khi nhân bản cuộc trò chuyện");
@@ -531,9 +608,10 @@ export default function RoleDashboard() {
         </div>
 
         {/* Menu Items */}
-        <nav className="p-4 flex-1 space-y-1 overflow-y-auto">
+        <nav className="p-4 flex-1 space-y-1.5 overflow-y-auto">
+          {/* TOP-LEVEL */}
           <Link
-            href="?tab=overview"
+            href="/overview"
             scroll={false}
             prefetch={false}
             onClick={(e) => { e.stopPropagation(); setActiveTab('overview'); }}
@@ -547,7 +625,7 @@ export default function RoleDashboard() {
           </Link>
 
           <Link
-            href="?tab=ai_chat"
+            href="/ai-chat"
             scroll={false}
             prefetch={false}
             onClick={(e) => { e.stopPropagation(); setActiveTab('ai_chat'); }}
@@ -561,37 +639,7 @@ export default function RoleDashboard() {
           </Link>
 
           <Link
-            href="?tab=library"
-            scroll={false}
-            prefetch={false}
-            onClick={(e) => { e.stopPropagation(); setActiveTab('library'); }}
-            className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'} ${activeTab === 'library'
-                ? 'bg-markee-primary text-white shadow-md shadow-red-100'
-                : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
-              }`}
-          >
-            <span>📚</span>
-            <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Thư viện kỹ năng</span>
-          </Link>
-
-          {(profile.role === 'admin' || profile.role === 'super_admin') && (
-            <Link
-              href="?tab=skill_approval"
-              scroll={false}
-              prefetch={false}
-              onClick={(e) => { e.stopPropagation(); setActiveTab('skill_approval'); }}
-              className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'} ${activeTab === 'skill_approval'
-                  ? 'bg-markee-primary text-white shadow-md shadow-red-100'
-                  : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
-                }`}
-            >
-              <span>✅</span>
-              <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Duyệt kỹ năng</span>
-            </Link>
-          )}
-
-          <Link
-            href="?tab=projects"
+            href="/projects"
             scroll={false}
             prefetch={false}
             onClick={(e) => { e.stopPropagation(); setActiveTab('projects'); }}
@@ -604,92 +652,127 @@ export default function RoleDashboard() {
             <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Quản Lý dự án</span>
           </Link>
 
+          {/* DROPDOWN: KHO TRÍ THỨC */}
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setManualToggle(!isKnowledgeDropdownOpen);
+              }}
+              className={`w-full flex items-center justify-between rounded-xl text-sm font-semibold transition-all cursor-pointer border-0 ${
+                isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-2.5' : 'px-4 py-2.5'
+              } text-slate-600 hover:bg-slate-100 hover:text-slate-900`}
+            >
+              <div className="flex items-center gap-3">
+                <span>🧠</span>
+                <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Kho Trí Thức</span>
+              </div>
+              {!isCollapsed && (
+                <div className="text-slate-400">
+                  {isKnowledgeDropdownOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </div>
+              )}
+            </button>
+
+            {isKnowledgeDropdownOpen && (
+              <div className={`mt-1 space-y-1 overflow-hidden transition-all duration-200 ${isCollapsed ? '' : 'pl-4 border-l-2 border-slate-100 ml-5'}`}>
+                <Link
+                  href="/knowledge-hub"
+                  scroll={false}
+                  prefetch={false}
+                  onClick={(e) => { e.stopPropagation(); setActiveTab('knowledge_hub'); }}
+                  className={`w-full flex items-center rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-2.5' : 'gap-2.5 px-3 py-2'
+                  } ${activeTab === 'knowledge_hub'
+                      ? 'bg-red-50 text-markee-primary font-bold'
+                      : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+                    }`}
+                >
+                  <span className="text-sm">🌐</span>
+                  <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Kho Trí Thức Tổng Quan</span>
+                </Link>
+
+                <Link
+                  href="/knowledge-hub/skill-library"
+                  scroll={false}
+                  prefetch={false}
+                  onClick={(e) => { e.stopPropagation(); setActiveTab('library'); }}
+                  className={`w-full flex items-center rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-2.5' : 'gap-2.5 px-3 py-2'
+                  } ${activeTab === 'library'
+                      ? 'bg-red-50 text-markee-primary font-bold'
+                      : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+                    }`}
+                >
+                  <span className="text-sm">📚</span>
+                  <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Thư viện kỹ năng</span>
+                </Link>
+
+                {(profile.role === 'admin' || profile.role === 'super_admin') && (
+                  <Link
+                    href="/knowledge-hub/skill-approval"
+                    scroll={false}
+                    prefetch={false}
+                    onClick={(e) => { e.stopPropagation(); setActiveTab('skill_approval'); }}
+                    className={`w-full flex items-center rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-2.5' : 'gap-2.5 px-3 py-2'
+                    } ${activeTab === 'skill_approval'
+                        ? 'bg-red-50 text-markee-primary font-bold'
+                        : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+                      }`}
+                  >
+                    <span className="text-sm">✅</span>
+                    <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Duyệt kỹ năng</span>
+                  </Link>
+                )}
+
+                <Link
+                  href="/knowledge-hub/files"
+                  scroll={false}
+                  prefetch={false}
+                  onClick={(e) => { e.stopPropagation(); setActiveTab('quan-ly-file'); }}
+                  className={`w-full flex items-center rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-2.5' : 'gap-2.5 px-3 py-2'
+                  } ${activeTab === 'quan-ly-file'
+                      ? 'bg-red-50 text-markee-primary font-bold'
+                      : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+                    }`}
+                >
+                  <Files className="w-3.5 h-3.5 shrink-0" />
+                  <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Quản lý File</span>
+                </Link>
+              </div>
+            )}
+          </div>
+
+          {/* TÀI KHOẢN AI CỦA TÔI */}
           <Link
-            href="?tab=knowledge_hub"
+            href="/my-assets"
             scroll={false}
             prefetch={false}
-            onClick={(e) => { e.stopPropagation(); setActiveTab('knowledge_hub'); }}
-            className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'} ${activeTab === 'knowledge_hub'
+            onClick={(e) => { e.stopPropagation(); setActiveTab('assets'); }}
+            className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${
+              isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'
+            } ${activeTab === 'assets'
                 ? 'bg-markee-primary text-white shadow-md shadow-red-100'
                 : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
               }`}
           >
-            <span>🧠</span>
-            <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Kho Tri thức</span>
+            <span>💳</span>
+            <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Tài khoản AI của tôi</span>
           </Link>
 
-          <Link
-            href="?tab=quan-ly-file"
-            scroll={false}
-            prefetch={false}
-            onClick={(e) => { e.stopPropagation(); setActiveTab('quan-ly-file'); }}
-            className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'} ${activeTab === 'quan-ly-file'
-                ? 'bg-markee-primary text-white shadow-md shadow-red-100'
-                : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
-              }`}
-          >
-            <Files className={`w-4.5 h-4.5 shrink-0 ${isCollapsed ? 'md:mx-auto' : ''}`} />
-            <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Quản lý File</span>
-          </Link>
-
-          {profile.role === 'user' && (
-            <Link
-              href="?tab=assets"
-              scroll={false}
-              prefetch={false}
-              onClick={(e) => { e.stopPropagation(); setActiveTab('assets'); }}
-              className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'} ${activeTab === 'assets'
-                  ? 'bg-markee-primary text-white shadow-md shadow-red-100'
-                  : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
-                }`}
-            >
-              <span>💳</span>
-              <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Tài khoản AI của tôi</span>
-            </Link>
-          )}
-
+          {/* SECTION: QUẢN LÝ TÀI NGUYÊN */}
           {(profile.role === 'admin' || profile.role === 'super_admin') && (
-            <Link
-              href="?tab=users"
-              scroll={false}
-              prefetch={false}
-              onClick={(e) => { e.stopPropagation(); setActiveTab('users'); }}
-              className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'} ${activeTab === 'users'
-                  ? 'bg-markee-primary text-white shadow-md shadow-red-100'
-                  : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
-                }`}
-            >
-              <span>👥</span>
-              <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Quản lý User</span>
-            </Link>
-          )}
-
-          {(profile.role === 'admin' || profile.role === 'super_admin') && (
-            <Link
-              href="?tab=api_management"
-              scroll={false}
-              prefetch={false}
-              onClick={(e) => { e.stopPropagation(); setActiveTab('api_management'); }}
-              className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'} ${activeTab === 'api_management'
-                  ? 'bg-markee-primary text-white shadow-md shadow-red-100'
-                  : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
-                }`}
-            >
-              <span>🔑</span>
-              <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Quản lý API & Chi phí</span>
-            </Link>
-          )}
-
-          {/* ---- GROUP: Quản lý tài nguyên ---- */}
-          {(profile.role === 'admin' || profile.role === 'super_admin') && (
-            <>
+            <div className="pt-4">
               {!isCollapsed ? (
-                <div className="pt-3 pb-1 animate-in fade-in duration-200">
-                  <p className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Quản lý tài nguyên</p>
+                <div className="pb-1.5 animate-in fade-in duration-200">
+                  <p className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">QUẢN LÝ TÀI NGUYÊN</p>
                 </div>
               ) : (
-                <div className="block md:hidden pt-3 pb-1 animate-in fade-in duration-200">
-                  <p className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Quản lý tài nguyên</p>
+                <div className="block md:hidden pb-1.5 animate-in fade-in duration-200">
+                  <p className="px-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">QUẢN LÝ TÀI NGUYÊN</p>
                 </div>
               )}
               {isCollapsed && (
@@ -697,12 +780,31 @@ export default function RoleDashboard() {
               )}
 
               <Link
-                href="?tab=quan-ly-vps"
+                href="/resource-management/system"
                 scroll={false}
                 prefetch={false}
-                onClick={(e) => { e.stopPropagation(); setActiveTab('quan-ly-vps'); }}
-                className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'} ${
-                  activeTab === 'quan-ly-vps'
+                onClick={(e) => { e.stopPropagation(); setActiveTab('resource-system'); }}
+                className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${
+                  isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'
+                } ${
+                  activeTab === 'resource-system'
+                    ? 'bg-markee-primary text-white shadow-md shadow-red-100'
+                    : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
+                }`}
+              >
+                <span>⚙️</span>
+                <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Quản lý Hệ thống & User</span>
+              </Link>
+
+              <Link
+                href="/resource-management/vps"
+                scroll={false}
+                prefetch={false}
+                onClick={(e) => { e.stopPropagation(); setActiveTab('resource-vps'); }}
+                className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${
+                  isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'
+                } ${
+                  activeTab === 'resource-vps'
                     ? 'bg-markee-primary text-white shadow-md shadow-red-100'
                     : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
                 }`}
@@ -710,22 +812,7 @@ export default function RoleDashboard() {
                 <span>🖥️</span>
                 <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Quản lý VPS</span>
               </Link>
-
-              <Link
-                href="?tab=giam-sat-vps"
-                scroll={false}
-                prefetch={false}
-                onClick={(e) => { e.stopPropagation(); setActiveTab('giam-sat-vps'); }}
-                className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'} ${
-                  activeTab === 'giam-sat-vps'
-                    ? 'bg-markee-primary text-white shadow-md shadow-red-100'
-                    : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
-                }`}
-              >
-                <span>📡</span>
-                <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Giám sát VPS</span>
-              </Link>
-            </>
+            </div>
           )}
         </nav>
       </aside>
@@ -834,6 +921,14 @@ export default function RoleDashboard() {
 
           {activeTab === 'giam-sat-vps' && (
             <VpsMonitor />
+          )}
+
+          {activeTab === 'resource-system' && (profile.role === 'admin' || profile.role === 'super_admin') && (
+            <SystemManagementView profile={profile} />
+          )}
+
+          {activeTab === 'resource-vps' && (profile.role === 'admin' || profile.role === 'super_admin') && (
+            <VpsResourceView />
           )}
         </div>
       </div>

@@ -523,8 +523,8 @@ export default function ApiManagementDashboard({ isTab = false }: ApiManagementD
               </p>
             </div>
             
-            <div className="flex items-center gap-3 w-full sm:w-auto shrink-0">
-              <div className="relative w-full sm:max-w-xs">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto shrink-0">
+              <div className="relative w-full sm:w-64">
                 <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                   <Search className="w-4 h-4" />
                 </span>
@@ -537,35 +537,38 @@ export default function ApiManagementDashboard({ isTab = false }: ApiManagementD
                 />
               </div>
 
-              <button
-                onClick={handleSyncBalances}
-                disabled={isSyncing}
-                className="h-9 px-4 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0 whitespace-nowrap"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isSyncing ? 'animate-spin' : ''}`} />
-                <span>{isSyncing ? 'Đang đồng bộ...' : 'Đồng bộ số dư'}</span>
-              </button>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  onClick={handleSyncBalances}
+                  disabled={isSyncing}
+                  className="flex-1 sm:flex-initial h-9 px-4 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isSyncing ? 'animate-spin' : ''}`} />
+                  <span>{isSyncing ? 'Đang đồng bộ...' : 'Đồng bộ số dư'}</span>
+                </button>
 
-              <button
-                onClick={() => {
-                  setNewAppName('');
-                  setNewAppUrl('');
-                  setNewAppSecretKey('');
-                  setIsCreateModalOpen(true);
-                }}
-                className="bg-markee-primary hover:bg-markee-hover text-white h-9 px-4 rounded-xl text-xs font-bold transition-all shadow-md shadow-red-100 flex items-center gap-1.5 border-0 cursor-pointer shrink-0 whitespace-nowrap"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Thêm API Key mới</span>
-              </button>
+                <button
+                  onClick={() => {
+                    setNewAppName('');
+                    setNewAppUrl('');
+                    setNewAppSecretKey('');
+                    setIsCreateModalOpen(true);
+                  }}
+                  className="flex-1 sm:flex-initial bg-markee-primary hover:bg-markee-hover text-white h-9 px-4 rounded-xl text-xs font-bold transition-all shadow-md shadow-red-100 flex items-center justify-center gap-1.5 border-0 cursor-pointer whitespace-nowrap"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Thêm API Key mới</span>
+                </button>
+              </div>
             </div>
           </div>
 
           <div className="overflow-x-auto overflow-y-auto max-h-125 pb-48 min-h-55 relative">
             {loading ? (
-              <div className="flex flex-col items-center justify-center py-16 gap-2">
-                <div className="w-6 h-6 border-2 border-markee-primary border-t-transparent rounded-full animate-spin" />
-                <p className="text-xs text-slate-400 font-bold">Đang tải danh sách API Keys...</p>
+              <div className="p-5 space-y-3 animate-pulse">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="h-12 bg-slate-100 rounded-xl w-full" />
+                ))}
               </div>
             ) : (
               <table className="w-full border-collapse text-left text-xs text-slate-500 overflow-visible">

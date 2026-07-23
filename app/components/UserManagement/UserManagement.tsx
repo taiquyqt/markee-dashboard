@@ -41,12 +41,21 @@ function formatResetTime(resetTimeStr: string | null | undefined) {
   return `Ngày đặt lại: ${resetTimeStr}`;
 }
 
-export default function UserManagement({ profile }: { profile: UserProfile }) {
+export default function UserManagement({
+  profile,
+  initialTab,
+  hideHeader = false,
+}: {
+  profile: UserProfile;
+  initialTab?: 'users' | 'licenses';
+  hideHeader?: boolean;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
   const [activeTab, _setActiveTab] = useState<'users' | 'licenses'>(() => {
+    if (initialTab) return initialTab;
     if (typeof window !== 'undefined') {
       const searchParams = new URLSearchParams(window.location.search);
       const utab = searchParams.get('utab');
@@ -56,6 +65,12 @@ export default function UserManagement({ profile }: { profile: UserProfile }) {
     }
     return 'licenses';
   });
+
+  useEffect(() => {
+    if (initialTab) {
+      _setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   const setActiveTab = (tab: 'users' | 'licenses') => {
     _setActiveTab(tab);
@@ -437,31 +452,33 @@ export default function UserManagement({ profile }: { profile: UserProfile }) {
       )}
 
       {/* Header with Tab Switcher */}
-      <section className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-bold text-markee-text">Quản lý hệ thống</h1>
-          <p className="text-xs text-markee-muted">Quản lý phân quyền và cấp phát bản quyền AI công ty.</p>
-        </div>
+      {!hideHeader && (
+        <section className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-bold text-markee-text">Quản lý hệ thống</h1>
+            <p className="text-xs text-markee-muted">Quản lý phân quyền và cấp phát bản quyền AI công ty.</p>
+          </div>
 
-        <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200">
-          <button
-            type="button"
-            onClick={() => setActiveTab('licenses')}
-            className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer border-0 ${activeTab === 'licenses' ? 'bg-white text-markee-text shadow-xs' : 'bg-transparent text-markee-muted hover:text-markee-text'
-              }`}
-          >
-            Quản lý Bản quyền AI
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('users')}
-            className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer border-0 ${activeTab === 'users' ? 'bg-white text-markee-text shadow-xs' : 'bg-transparent text-markee-muted hover:text-markee-text'
-              }`}
-          >
-            Danh sách User
-          </button>
-        </div>
-      </section>
+          <div className="flex bg-gray-100 p-1 rounded-lg border border-gray-200">
+            <button
+              type="button"
+              onClick={() => setActiveTab('licenses')}
+              className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer border-0 ${activeTab === 'licenses' ? 'bg-white text-markee-text shadow-xs' : 'bg-transparent text-markee-muted hover:text-markee-text'
+                }`}
+            >
+              Quản lý Bản quyền AI
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('users')}
+              className={`px-4 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer border-0 ${activeTab === 'users' ? 'bg-white text-markee-text shadow-xs' : 'bg-transparent text-markee-muted hover:text-markee-text'
+                }`}
+            >
+              Danh sách User
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* Tab 1: Users */}
       {activeTab === 'users' && (
