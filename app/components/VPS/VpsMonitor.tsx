@@ -210,8 +210,8 @@ export default function VpsMonitor() {
     }
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (isManualRefresh = false) => {
+    if (isManualRefresh) setLoading(true);
     setError(null);
     try {
       const data = await fetchVpsInstances();
@@ -225,7 +225,21 @@ export default function VpsMonitor() {
     }
   }, [runPingCheck]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    const pingInterval = setInterval(() => {
+      setVpsList((currentList) => {
+        if (currentList && currentList.length > 0) {
+          runPingCheck(currentList);
+        }
+        return currentList;
+      });
+    }, 30000);
+
+    return () => {
+      clearInterval(pingInterval);
+    };
+  }, [load, runPingCheck]);
 
   // Realtime Status WebSocket crawl-status connection
   useEffect(() => {
@@ -383,7 +397,7 @@ export default function VpsMonitor() {
         <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
           <p className="text-red-500 text-sm font-semibold">{error}</p>
           <button
-            onClick={load}
+            onClick={() => load(true)}
             className="px-4 py-2 text-xs font-semibold bg-red-500 hover:bg-red-600 text-white rounded-lg cursor-pointer transition-colors"
           >
             Thử lại

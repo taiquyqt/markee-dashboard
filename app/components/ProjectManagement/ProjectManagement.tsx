@@ -197,6 +197,15 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
+  useEffect(() => {
+    const cust = searchParams.get('customer') || searchParams.get('client');
+    if (cust !== null && cust !== undefined) {
+      setSelectedCustomerId(cust);
+    } else {
+      setSelectedCustomerId('');
+    }
+  }, [searchParams]);
+
   const [loading, setLoading] = useState(true);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [projectTab, _setProjectTab] = useState<'timeline' | 'knowledge_hub'>(() => {

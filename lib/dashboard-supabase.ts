@@ -1223,6 +1223,7 @@ export async function fetchProjectWIPsForUser(projectId: number, authorId: strin
     tier: "WIP",
     title: row.title,
     team_track: row.team_track,
+    feature_name: row.feature_name,
     attached_file: row.attached_file,
   }));
 
@@ -1257,6 +1258,7 @@ export async function fetchProjectWIPs(projectId: number, page = 0, pageSize = 2
     tier: "WIP",
     title: row.title,
     team_track: row.team_track,
+    feature_name: row.feature_name,
     attached_file: row.attached_file,
   }));
 
@@ -1293,6 +1295,7 @@ export async function fetchMyWIPs(email: string): Promise<AISession[]> {
     tier: "WIP",
     title: row.title,
     team_track: row.team_track,
+    feature_name: row.feature_name,
     attached_file: row.attached_file,
   }));
 }

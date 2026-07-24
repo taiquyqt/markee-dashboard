@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -297,6 +297,10 @@ export default function ChatSidebar({
     return null;
   };
 
+  const sessionListContent = useMemo(() => {
+    return renderSessionList();
+  }, [sessions, activeSessionId, groupBy, isCollapsed, editingSessionId, editTitle, openMenuId, projects]);
+
   return (
     <>
       <aside className={`fixed md:relative inset-y-0 left-0 z-50 border-r border-slate-200 bg-slate-50 flex flex-col h-full select-none transition-all duration-300 transform ${isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
@@ -436,7 +440,7 @@ export default function ChatSidebar({
             </div>
           )}
 
-          {renderSessionList()}
+          {sessionListContent}
         </div>
       </aside>
 

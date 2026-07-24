@@ -431,6 +431,68 @@ export default function RoleDashboard({ initialTab }: { initialTab?: string }) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
+  const [sidebarCustomers, setSidebarCustomers] = useState<{ id: string; name: string; projectCount: number }[]>([]);
+  const [totalProjectsCount, setTotalProjectsCount] = useState<number>(0);
+  const [isCustomerMenuOpen, setIsCustomerMenuOpen] = useState<boolean>(false);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+
+  useEffect(() => {
+    async function loadSidebarCustomers() {
+      try {
+        const [{ data: custData }, { data: projData }] = await Promise.all([
+          supabase.from('customers').select('id, name').order('name'),
+          supabase.from('projects').select('id, customer_id')
+        ]);
+
+        if (projData) {
+          setTotalProjectsCount(projData.length);
+        }
+
+        if (custData && projData) {
+          const countMap: Record<string, number> = {};
+          projData.forEach(p => {
+            if (p.customer_id) {
+              const cid = String(p.customer_id);
+              countMap[cid] = (countMap[cid] || 0) + 1;
+            }
+          });
+
+          const list = custData.map(c => ({
+            id: String(c.id),
+            name: c.name,
+            projectCount: countMap[String(c.id)] || 0
+          }));
+
+          setSidebarCustomers(list);
+        }
+      } catch (err) {
+        console.error('Error fetching sidebar customers:', err);
+      }
+    }
+    loadSidebarCustomers();
+  }, []);
+
+  useEffect(() => {
+    const cust = searchParams.get('customer') || searchParams.get('client');
+    if (cust !== null) {
+      setSelectedCustomerId(cust);
+    } else {
+      setSelectedCustomerId('');
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const isGoingToProjects = pathname.startsWith('/projects') || activeTab === 'projects';
+    if (!isGoingToProjects) {
+      setIsCustomerMenuOpen(false);
+    } else {
+      const hasCustomerParam = searchParams.get('customer') || searchParams.get('client');
+      if (hasCustomerParam) {
+        setIsCustomerMenuOpen(true);
+      }
+    }
+  }, [pathname, activeTab, searchParams]);
+
   const setActiveTab = (tab: TabType) => {
     _setActiveTab(tab);
     setIsMobileOpen(false);
@@ -520,7 +582,7 @@ export default function RoleDashboard({ initialTab }: { initialTab?: string }) {
 
             // Nhân bản thành công -> chuyển sang tab chat và mở thẳng session vừa clone
             router.replace(`/?tab=ai_chat&session_id=${data.new_session_id}`);
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
           } catch (err: any) {
             console.error("Lỗi clone chat từ localStorage:", err);
             alert(err.message || "Lỗi khi nhân bản cuộc trò chuyện");
@@ -616,8 +678,8 @@ export default function RoleDashboard({ initialTab }: { initialTab?: string }) {
             prefetch={false}
             onClick={(e) => { e.stopPropagation(); setActiveTab('overview'); }}
             className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'} ${activeTab === 'overview'
-                ? 'bg-markee-primary text-white shadow-md shadow-red-100'
-                : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
+              ? 'bg-markee-primary text-white shadow-md shadow-red-100'
+              : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
               }`}
           >
             <span>📊</span>
@@ -630,27 +692,94 @@ export default function RoleDashboard({ initialTab }: { initialTab?: string }) {
             prefetch={false}
             onClick={(e) => { e.stopPropagation(); setActiveTab('ai_chat'); }}
             className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'} ${activeTab === 'ai_chat'
-                ? 'bg-markee-primary text-white shadow-md shadow-red-100'
-                : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
+              ? 'bg-markee-primary text-white shadow-md shadow-red-100'
+              : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
               }`}
           >
             <span>💬</span>
             <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Trò chuyện cùng AI</span>
           </Link>
 
-          <Link
-            href="/projects"
-            scroll={false}
-            prefetch={false}
-            onClick={(e) => { e.stopPropagation(); setActiveTab('projects'); }}
-            className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'} ${activeTab === 'projects'
-                ? 'bg-markee-primary text-white shadow-md shadow-red-100'
-                : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
-              }`}
-          >
-            <span>📁</span>
-            <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Quản Lý dự án</span>
-          </Link>
+          {/* DROPDOWN: QUẢN LÝ DỰ ÁN & KHÁCH HÀNG */}
+          <div>
+            <Link
+              href="/projects"
+              scroll={false}
+              prefetch={false}
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveTab('projects');
+                setSelectedCustomerId('');
+              }}
+              className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'
+                } ${activeTab === 'projects' && !selectedCustomerId
+                  ? 'bg-markee-primary text-white shadow-md shadow-red-100'
+                  : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
+                }`}
+            >
+              <span>📁</span>
+              <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>
+                Quản Lý dự án
+              </span>
+            </Link>
+
+            {/* SUB-MENU KHÁCH HÀNG (FOLDER TREE) */}
+            {!isCollapsed && (
+              <div className="mt-1">
+                {/* Header Row: [Icon] KHÁCH HÀNG [flex-spacer] X DỰ ÁN */}
+                <button
+                  type="button"
+                  onClick={() => setIsCustomerMenuOpen(!isCustomerMenuOpen)}
+                  className="w-full px-3 py-1.5 text-[10px] font-bold text-slate-400 hover:text-slate-700 uppercase tracking-wider flex items-center justify-between cursor-pointer border-0 bg-transparent rounded-lg hover:bg-slate-100 transition-colors"
+                >
+                  <div className="flex items-center gap-1.5">
+                    {isCustomerMenuOpen ? (
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    ) : (
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    )}
+                    <span>Khách hàng</span>
+                  </div>
+                </button>
+
+                {/* LUÔN RENDER DIV, DÙNG CSS HIDDEN/BLOCK ĐỂ ẨN HIỆN */}
+                <div className={`mt-1 space-y-1 pl-4 border-l-2 border-slate-100 ml-3 ${isCustomerMenuOpen ? 'block' : 'hidden'
+                  }`}>
+                  {sidebarCustomers.map((cust) => {
+                    const isSelected = activeTab === 'projects' && selectedCustomerId === cust.id;
+                    return (
+                      <Link
+                        key={cust.id}
+                        href={`/projects?customer=${cust.id}`}
+                        scroll={false}
+                        prefetch={false}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveTab('projects');
+                          setSelectedCustomerId(cust.id);
+                          setIsCustomerMenuOpen(true);
+                        }}
+                        className={`w-full flex items-center justify-between rounded-xl text-xs font-semibold transition-all cursor-pointer px-3 py-1.5 ${isSelected
+                            ? 'bg-red-50 text-markee-primary font-bold'
+                            : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+                          }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-xs shrink-0">🏢</span>
+                          <span className="truncate">
+                            {cust.name}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-medium shrink-0">
+                          ({cust.projectCount})
+                        </span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* DROPDOWN: KHO TRÍ THỨC */}
           <div className="pt-2">
@@ -660,9 +789,8 @@ export default function RoleDashboard({ initialTab }: { initialTab?: string }) {
                 e.stopPropagation();
                 setManualToggle(!isKnowledgeDropdownOpen);
               }}
-              className={`w-full flex items-center justify-between rounded-xl text-sm font-semibold transition-all cursor-pointer border-0 ${
-                isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-2.5' : 'px-4 py-2.5'
-              } text-slate-600 hover:bg-slate-100 hover:text-slate-900`}
+              className={`w-full flex items-center justify-between rounded-xl text-sm font-semibold transition-all cursor-pointer border-0 ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-2.5' : 'px-4 py-2.5'
+                } text-slate-600 hover:bg-slate-100 hover:text-slate-900`}
             >
               <div className="flex items-center gap-3">
                 <span>🧠</span>
@@ -682,9 +810,8 @@ export default function RoleDashboard({ initialTab }: { initialTab?: string }) {
                   scroll={false}
                   prefetch={false}
                   onClick={(e) => { e.stopPropagation(); setActiveTab('knowledge_hub'); }}
-                  className={`w-full flex items-center rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                    isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-2.5' : 'gap-2.5 px-3 py-2'
-                  } ${activeTab === 'knowledge_hub'
+                  className={`w-full flex items-center rounded-xl text-xs font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-2.5' : 'gap-2.5 px-3 py-2'
+                    } ${activeTab === 'knowledge_hub'
                       ? 'bg-red-50 text-markee-primary font-bold'
                       : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
                     }`}
@@ -698,9 +825,8 @@ export default function RoleDashboard({ initialTab }: { initialTab?: string }) {
                   scroll={false}
                   prefetch={false}
                   onClick={(e) => { e.stopPropagation(); setActiveTab('library'); }}
-                  className={`w-full flex items-center rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                    isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-2.5' : 'gap-2.5 px-3 py-2'
-                  } ${activeTab === 'library'
+                  className={`w-full flex items-center rounded-xl text-xs font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-2.5' : 'gap-2.5 px-3 py-2'
+                    } ${activeTab === 'library'
                       ? 'bg-red-50 text-markee-primary font-bold'
                       : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
                     }`}
@@ -715,9 +841,8 @@ export default function RoleDashboard({ initialTab }: { initialTab?: string }) {
                     scroll={false}
                     prefetch={false}
                     onClick={(e) => { e.stopPropagation(); setActiveTab('skill_approval'); }}
-                    className={`w-full flex items-center rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                      isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-2.5' : 'gap-2.5 px-3 py-2'
-                    } ${activeTab === 'skill_approval'
+                    className={`w-full flex items-center rounded-xl text-xs font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-2.5' : 'gap-2.5 px-3 py-2'
+                      } ${activeTab === 'skill_approval'
                         ? 'bg-red-50 text-markee-primary font-bold'
                         : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
                       }`}
@@ -732,9 +857,8 @@ export default function RoleDashboard({ initialTab }: { initialTab?: string }) {
                   scroll={false}
                   prefetch={false}
                   onClick={(e) => { e.stopPropagation(); setActiveTab('quan-ly-file'); }}
-                  className={`w-full flex items-center rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                    isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-2.5' : 'gap-2.5 px-3 py-2'
-                  } ${activeTab === 'quan-ly-file'
+                  className={`w-full flex items-center rounded-xl text-xs font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-2.5' : 'gap-2.5 px-3 py-2'
+                    } ${activeTab === 'quan-ly-file'
                       ? 'bg-red-50 text-markee-primary font-bold'
                       : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
                     }`}
@@ -752,9 +876,8 @@ export default function RoleDashboard({ initialTab }: { initialTab?: string }) {
             scroll={false}
             prefetch={false}
             onClick={(e) => { e.stopPropagation(); setActiveTab('assets'); }}
-            className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${
-              isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'
-            } ${activeTab === 'assets'
+            className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'
+              } ${activeTab === 'assets'
                 ? 'bg-markee-primary text-white shadow-md shadow-red-100'
                 : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
               }`}
@@ -784,13 +907,11 @@ export default function RoleDashboard({ initialTab }: { initialTab?: string }) {
                 scroll={false}
                 prefetch={false}
                 onClick={(e) => { e.stopPropagation(); setActiveTab('resource-system'); }}
-                className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${
-                  isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'
-                } ${
-                  activeTab === 'resource-system'
+                className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'
+                  } ${activeTab === 'resource-system'
                     ? 'bg-markee-primary text-white shadow-md shadow-red-100'
                     : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
-                }`}
+                  }`}
               >
                 <span>⚙️</span>
                 <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Quản lý Hệ thống & User</span>
@@ -801,13 +922,11 @@ export default function RoleDashboard({ initialTab }: { initialTab?: string }) {
                 scroll={false}
                 prefetch={false}
                 onClick={(e) => { e.stopPropagation(); setActiveTab('resource-vps'); }}
-                className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${
-                  isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'
-                } ${
-                  activeTab === 'resource-vps'
+                className={`w-full flex items-center rounded-xl text-sm font-semibold transition-all cursor-pointer ${isCollapsed ? 'justify-start md:justify-center gap-3 md:gap-0 px-4 md:px-0 py-3' : 'gap-3 px-4 py-3'
+                  } ${activeTab === 'resource-vps'
                     ? 'bg-markee-primary text-white shadow-md shadow-red-100'
                     : 'text-markee-muted hover:bg-markee-bg hover:text-markee-text'
-                }`}
+                  }`}
               >
                 <span>🖥️</span>
                 <span className={`animate-in fade-in duration-200 ${isCollapsed ? 'block md:hidden' : 'block'}`}>Quản lý VPS</span>

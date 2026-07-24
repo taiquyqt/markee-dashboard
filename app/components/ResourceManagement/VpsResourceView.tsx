@@ -24,11 +24,12 @@ export default function VpsResourceView({ initialSubTab = 'vps-management' }: Vp
   useEffect(() => {
     const sub = searchParams.get('subtab');
     if (sub && ['vps-management', 'vps-monitor'].includes(sub)) {
-      setActiveSubTab(sub as 'vps-management' | 'vps-monitor');
+      setActiveSubTab((prev) => (prev !== sub ? (sub as 'vps-management' | 'vps-monitor') : prev));
     }
   }, [searchParams]);
 
   const handleSubTabChange = (tab: 'vps-management' | 'vps-monitor') => {
+    if (activeSubTab === tab) return;
     setActiveSubTab(tab);
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -82,19 +83,15 @@ export default function VpsResourceView({ initialSubTab = 'vps-management' }: Vp
         </div>
       </div>
 
-      {/* Sub-tab Content Area */}
+      {/* Sub-tab Content Area - Keep-Alive Pattern */}
       <div className="flex-1">
-        {activeSubTab === 'vps-management' && (
-          <div className="animate-in fade-in duration-200">
-            <VpsManagement />
-          </div>
-        )}
+        <div className={activeSubTab === 'vps-management' ? 'block animate-in fade-in duration-200' : 'hidden'}>
+          <VpsManagement />
+        </div>
 
-        {activeSubTab === 'vps-monitor' && (
-          <div className="animate-in fade-in duration-200">
-            <VpsMonitor />
-          </div>
-        )}
+        <div className={activeSubTab === 'vps-monitor' ? 'block animate-in fade-in duration-200' : 'hidden'}>
+          <VpsMonitor />
+        </div>
       </div>
     </div>
   );
