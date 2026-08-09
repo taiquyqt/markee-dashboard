@@ -165,7 +165,7 @@ interface ProjectDetailContentProps {
   profile: any;
   isReadOnly?: boolean;
   onClose?: () => void;
-  onProjectUpdated?: (updatedProject: Project) => void;
+  onProjectUpdated?: (updatedProject: Project, targetProjectId?: number) => void;
 }
 
 export default function ProjectDetailContent({
@@ -261,7 +261,7 @@ export default function ProjectDetailContent({
   const [activeMoveWIP, setActiveMoveWIP] = useState<AISession | null>(null);
   const [newProjectId, setNewProjectId] = useState<number | ''>('');
   const [isMovingWIP, setIsMovingWIP] = useState(false);
-  const [otherProjects, setOtherProjects] = useState<Project[]>([]);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
 
   const [activeDeleteWIP, setActiveDeleteWIP] = useState<AISession | null>(null);
   const [isDeletingWIP, setIsDeletingWIP] = useState(false);
@@ -381,20 +381,23 @@ export default function ProjectDetailContent({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project.id]);
 
-  // Load other projects for moving WIP
+  // Load all team projects for moving/editing WIP (filtering out personal projects)
   useEffect(() => {
-    if (!isReadOnly && activeMoveWIP) {
-      async function loadOtherProjects() {
+    if (!isReadOnly) {
+      async function loadAllProjects() {
         try {
-          const { data } = await supabase.from('projects').select('id, name').neq('id', project.id);
-          setOtherProjects((data || []) as any[]);
+          const { data } = await supabase.from('projects').select('id, name, master_summary, type').order('name');
+          const teamProjects = (data || []).filter(
+            (p: any) => p.type !== 'PERSONAL' && p.type !== 'personal'
+          );
+          setAllProjects(teamProjects as any[]);
         } catch (e) {
-          console.error(e);
+          console.error('Error fetching team projects:', e);
         }
       }
-      loadOtherProjects();
+      loadAllProjects();
     }
-  }, [activeMoveWIP, project.id, isReadOnly]);
+  }, [project.id, isReadOnly]);
 
   async function loadUserLogs(projId: number, userEmail: string, isInitial = false) {
     setLogsLoading(true);
@@ -716,7 +719,7 @@ export default function ProjectDetailContent({
         };
         setProject(updatedProj);
         if (onProjectUpdated) {
-          onProjectUpdated(updatedProj);
+          onProjectUpdated(updatedProj, Number(newProjectId));
         }
       }, 500);
     } catch (err) {
@@ -801,7 +804,7 @@ export default function ProjectDetailContent({
 
       let targetProjectObj = project;
       if (targetProjId !== project.id) {
-        const found = otherProjects.find(p => p.id === targetProjId);
+        const found = allProjects.find(p => Number(p.id) === targetProjId);
         if (found) targetProjectObj = found;
       }
 
@@ -922,8 +925,19 @@ export default function ProjectDetailContent({
 
       // If user selected to move to another project inside Edit Modal
       if (editMoveProjectId && Number(editMoveProjectId) !== Number(project.id)) {
-        await supabase.from('skill_library').update({ project_id: Number(editMoveProjectId) }).eq('id', activeEditWIP.id);
+        const targetProjId = Number(editMoveProjectId);
+        await supabase.from('skill_library').update({ project_id: targetProjId }).eq('id', activeEditWIP.id);
         setLogs(prev => prev.filter(l => l.id !== activeEditWIP.id));
+
+        const updatedProj = {
+          ...project,
+          logCount: Math.max(0, (project.logCount || 1) - 1)
+        };
+        setProject(updatedProj);
+        if (onProjectUpdated) {
+          onProjectUpdated(updatedProj, targetProjId);
+        }
+
         showToast('Cập nhật & chuyển dự án thành công!', 'success');
       } else {
         showToast('Cập nhật bản nháp thành công!', 'success');
@@ -1876,14 +1890,19 @@ export default function ProjectDetailContent({
                 </label>
                 <select
                   id="editWipProjectSelect"
-                  value={editMoveProjectId}
+                  value={editMoveProjectId || project.id}
                   onChange={(e) => setEditMoveProjectId(e.target.value ? Number(e.target.value) : '')}
-                  className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none cursor-pointer"
+                  className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white text-markee-text focus:outline-none cursor-pointer font-medium"
                 >
-                  <option value={project.id}>{project.name} (Hiện tại)</option>
-                  {otherProjects.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
+                  {allProjects.length > 0 ? (
+                    allProjects.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} {Number(p.id) === Number(project.id) ? '(Hiện tại)' : ''}
+                      </option>
+                    ))
+                  ) : (
+                    <option value={project.id}>{project.name} (Hiện tại)</option>
+                  )}
                 </select>
               </div>
 
@@ -2013,7 +2032,7 @@ export default function ProjectDetailContent({
                   className="w-full px-3 py-2 text-xs border border-markee-border rounded-lg bg-white focus:outline-none cursor-pointer"
                 >
                   <option value="">-- Chọn dự án --</option>
-                  {otherProjects.map(p => (
+                  {allProjects.filter(p => Number(p.id) !== Number(project.id)).map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </select>

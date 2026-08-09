@@ -1023,9 +1023,18 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
               profile={profile}
               isReadOnly={false}
               onClose={handleCloseProjectModal}
-              onProjectUpdated={(updatedProj) => {
+              onProjectUpdated={(updatedProj, targetProjectId) => {
                 setSelectedProject(updatedProj);
-                setProjects(prev => prev.map(p => p.id === updatedProj.id ? updatedProj : p));
+                setProjects(prev => prev.map(p => {
+                  if (p.id === updatedProj.id) {
+                    return updatedProj;
+                  }
+                  if (targetProjectId && p.id === targetProjectId) {
+                    return { ...p, logCount: (p.logCount || 0) + 1 };
+                  }
+                  return p;
+                }));
+                loadProjects();
               }}
             />
           </div>
