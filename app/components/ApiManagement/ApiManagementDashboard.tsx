@@ -699,7 +699,7 @@ export default function ApiManagementDashboard({ isTab = false }: ApiManagementD
                               <span>
                                 {isKeyVisible 
                                   ? app.secret_key 
-                                  : `${app.secret_key.slice(0, 8)}••••••••••••••••••••`}
+                                  : `${app.secret_key.slice(0, 8)}•••••••••••••••••••••••••••••••••••••••••••`}
                               </span>
                               <button
                                 onClick={() => {

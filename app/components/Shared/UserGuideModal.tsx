@@ -67,7 +67,7 @@ export default function UserGuideModal({ isOpen, onClose }: UserGuideModalProps)
 
             <div className="mb-8">
               <a
-                href="https://drive.google.com/uc?export=download&id=1bFRUuE3HIrqDiAxfsZFavpwxyGxwIhhG"
+                href="https://drive.google.com/uc?export=download&id=1Of-lRfJw9OkVHSXjMq_SfK43vZIygymO"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center justify-center gap-3 w-full bg-markee-primary hover:bg-markee-hover text-white font-semibold py-3 px-4 rounded-lg transition-all hover:shadow-lg hover:shadow-markee-primary/30 group"
