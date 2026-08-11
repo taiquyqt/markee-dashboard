@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -189,16 +190,13 @@ async function handleSync(request: Request) {
           hardLimitUsd = Math.round(hardLimitUsdRaw * 100) / 100;
 
           // API 2: Lấy usage
-          const usageRes = await fetch(
-            `https://api.shopaikey.com/v1/dashboard/billing/usage?start_date=${startDate}&end_date=${endDate}`,
-            {
-              method: "GET",
-              headers: {
-                Authorization: `Bearer ${key.trim()}`,
-              },
-              cache: "no-store",
-            }
-          );
+          const usageRes = await fetch(`https://api.shopaikey.com/v1/dashboard/billing/usage?start_date=${startDate}&end_date=${endDate}`, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${key.trim()}`,
+            },
+            cache: "no-store",
+          });
 
           if (!usageRes.ok) {
             throw new Error(`Usage API error (HTTP ${usageRes.status})`);

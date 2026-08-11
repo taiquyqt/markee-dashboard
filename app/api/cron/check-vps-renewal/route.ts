@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runAIExpirationCheck } from '@/lib/cron-services';
+import { runVpsRenewalCheck } from '@/lib/cron-services';
 
 async function handleAuthAndExecute(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -15,7 +15,7 @@ async function handleAuthAndExecute(request: NextRequest) {
     }
   }
 
-  const result = await runAIExpirationCheck();
+  const result = await runVpsRenewalCheck();
   return NextResponse.json(result);
 }
 
