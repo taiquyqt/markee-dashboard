@@ -209,6 +209,7 @@ export default function ProjectDetailContent({
   const [editAttachedFiles, setEditAttachedFiles] = useState<any[]>([]);
   const [removedFiles, setRemovedFiles] = useState<any[]>([]);
   const [isUploadingWipFiles, setIsUploadingWipFiles] = useState(false);
+  const [isDraggingWipFiles, setIsDraggingWipFiles] = useState(false);
   const [features, setFeatures] = useState<string[]>([]);
   const [selectedFeature, setSelectedFeature] = useState<string>('');
   const [selectedWipFileIdx, setSelectedWipFileIdx] = useState<{ [logId: number]: number }>({});
@@ -962,8 +963,7 @@ export default function ProjectDetailContent({
     }
   }
 
-  async function handleUploadWipFiles(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = e.target.files;
+  async function processAndUploadWipFiles(files: FileList | File[]) {
     if (!files || files.length === 0) return;
     setIsUploadingWipFiles(true);
     try {
@@ -975,7 +975,47 @@ export default function ProjectDetailContent({
       showToast('Lỗi khi tải file lên', 'error');
     } finally {
       setIsUploadingWipFiles(false);
-      e.target.value = '';
+    }
+  }
+
+  async function handleUploadWipFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      await processAndUploadWipFiles(files);
+    }
+    e.target.value = '';
+  }
+
+  function handleWipDragOver(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isDraggingWipFiles) {
+      setIsDraggingWipFiles(true);
+    }
+  }
+
+  function handleWipDragEnter(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingWipFiles(true);
+  }
+
+  function handleWipDragLeave(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setIsDraggingWipFiles(false);
+  }
+
+  async function handleWipDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingWipFiles(false);
+    if (isUploadingWipFiles) return;
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      await processAndUploadWipFiles(files);
     }
   }
 
@@ -1920,14 +1960,24 @@ export default function ProjectDetailContent({
                 />
               </div>
 
-              {/* Đính kèm tài liệu (Upload nhiều file) */}
+              {/* Đính kèm tài liệu (Upload nhiều file - Hỗ trợ Kéo & Thả Drag & Drop) */}
               <div className="border-t border-slate-100 pt-4 mt-2">
                 <label className="block text-xs font-semibold text-markee-text mb-1.5">
                   Đính kèm tài liệu (Đa file)
                 </label>
                 
-                {/* Upload input button */}
-                <div className="flex items-center gap-2 mb-3">
+                {/* Drag & Drop Upload Zone */}
+                <div
+                  onDragOver={handleWipDragOver}
+                  onDragEnter={handleWipDragEnter}
+                  onDragLeave={handleWipDragLeave}
+                  onDrop={handleWipDrop}
+                  className={`relative border-2 border-dashed rounded-xl p-3 mb-3 transition-all select-none flex flex-col items-center justify-center gap-1 text-center cursor-pointer ${
+                    isDraggingWipFiles
+                      ? 'border-markee-primary bg-sky-50/90 ring-4 ring-markee-primary/15 scale-[1.01]'
+                      : 'border-slate-300 hover:border-markee-primary bg-slate-50/50 hover:bg-slate-50'
+                  } ${isUploadingWipFiles ? 'opacity-50 pointer-events-none' : ''}`}
+                >
                   <input
                     id="wipFileUploadInput"
                     type="file"
@@ -1938,10 +1988,16 @@ export default function ProjectDetailContent({
                   />
                   <label
                     htmlFor="wipFileUploadInput"
-                    className={`px-3 py-2 border border-dashed border-slate-300 hover:border-markee-primary rounded-lg text-xs font-semibold hover:bg-slate-50 cursor-pointer flex items-center gap-1.5 transition-colors select-none ${isUploadingWipFiles ? 'opacity-50 pointer-events-none' : ''}`}
+                    className="w-full flex items-center justify-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer"
                   >
-                    <span>📎</span>
-                    <span>{isUploadingWipFiles ? 'Đang tải lên...' : 'Chọn các file đính kèm...'}</span>
+                    <span className="text-base">{isDraggingWipFiles ? '📥' : '📎'}</span>
+                    <span>
+                      {isUploadingWipFiles
+                        ? 'Đang tải lên...'
+                        : isDraggingWipFiles
+                        ? 'Thả các file đính kèm vào đây'
+                        : 'Kéo thả file vào đây hoặc bấm để chọn...'}
+                    </span>
                   </label>
                 </div>
 

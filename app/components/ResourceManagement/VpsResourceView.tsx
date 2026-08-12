@@ -11,7 +11,7 @@ interface VpsResourceViewProps {
   initialSubTab?: 'vps-management' | 'vps-monitor' | 'vps-rentals';
 }
 
-export default function VpsResourceView({ initialSubTab = 'vps-management' }: VpsResourceViewProps) {
+export default function VpsResourceView({ initialSubTab = 'vps-rentals' }: VpsResourceViewProps) {
   const searchParams = useSearchParams();
 
   const [activeSubTab, setActiveSubTab] = useState<'vps-management' | 'vps-monitor' | 'vps-rentals'>(() => {
