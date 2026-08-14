@@ -17,7 +17,14 @@ function getSupabaseAdmin() {
   });
 }
 
-async function sendTelegramAlert(appName: string, providerName: string, balance: number, limit: number) {
+async function sendTelegramAlert(
+  appName: string,
+  providerName: string,
+  balance: number,
+  limit: number,
+  usagePercent: number,
+  alertTier: 'warning' | 'critical'
+) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
   const threadId = process.env.TELEGRAM_MESSAGE_THREAD_ID;
@@ -27,8 +34,12 @@ async function sendTelegramAlert(appName: string, providerName: string, balance:
     return;
   }
 
-  const usagePercent = limit > 0 ? ((limit - balance) / limit) * 100 : 0;
-  const text = `⚠️ <b>CẢNH BÁO SẮP CẠN SỐ DƯ API</b> ⚠️\n\nỨng dụng: <b>${appName}</b> (${providerName})\nHạn mức còn lại: <code>$${balance.toFixed(2)}</code> (~ ${(balance * 3250).toLocaleString("vi-VN")}đ)\nTỷ lệ sử dụng: <b>${usagePercent.toFixed(1)}%</b>`;
+  let text = '';
+  if (alertTier === 'critical') {
+    text = `🚨 <b>KHẨN CẤP: API CẠN KIỆT NGÂN SÁCH</b> 🚨\n\n🚨 KHẨN CẤP: Ứng dụng <b>${appName}</b> (${providerName}) đã cạn kiệt ngân sách (<b>${usagePercent.toFixed(1)}%</b>). Vui lòng nạp tiền ngay để không gián đoạn dịch vụ!\n\nHạn mức còn lại: <code>$${balance.toFixed(2)}</code> (~ ${(balance * 3250).toLocaleString("vi-VN")}đ)\nTổng ngân sách cấp: <code>$${limit.toFixed(2)}</code> (~ ${(limit * 3250).toLocaleString("vi-VN")}đ)`;
+  } else {
+    text = `⚠️ <b>CẢNH BÁO SẮP HẾT NGÂN SÁCH API</b> ⚠️\n\n⚠️ Chú ý: Ứng dụng <b>${appName}</b> (${providerName}) đã dùng hết <b>${usagePercent.toFixed(1)}%</b> ngân sách (Chỉ còn dưới 10%).\nHạn mức còn lại: <code>$${balance.toFixed(2)}</code> (~ ${(balance * 3250).toLocaleString("vi-VN")}đ)\nTổng ngân sách cấp: <code>$${limit.toFixed(2)}</code> (~ ${(limit * 3250).toLocaleString("vi-VN")}đ)`;
+  }
 
   try {
     const payload: any = {
@@ -140,15 +151,37 @@ async function syncAppBalance(app: any, supabaseAdmin: any) {
 
   const status = balanceUsd > 0 ? "active" : "depleted";
 
-  let isLowBalanceAlerted = app.is_low_balance_alerted || false;
-  if (hardLimitUsd > 0 && balanceUsd <= hardLimitUsd * 0.1) {
-    if (!isLowBalanceAlerted) {
-      await sendTelegramAlert(app.name, providerLabel, balanceUsd, hardLimitUsd);
-      isLowBalanceAlerted = true;
-    }
+  // Logic Cảnh báo Telegram & Anti-Spam (Mốc 90% & 99%)
+  const usagePercent = hardLimitUsd > 0 ? (totalUsedUsd / hardLimitUsd) * 100 : 0;
+  const currentAlertLevel = String(app.alert_level || (app.is_low_balance_alerted ? '90' : 'none'));
+
+  let targetAlertLevel = 'none';
+  let alertTier: 'none' | 'warning' | 'critical' = 'none';
+
+  if (usagePercent >= 99) {
+    targetAlertLevel = '99';
+    alertTier = 'critical';
+  } else if (usagePercent >= 90) {
+    targetAlertLevel = '90';
+    alertTier = 'warning';
   } else {
-    isLowBalanceAlerted = false;
+    targetAlertLevel = 'none';
+    alertTier = 'none';
   }
+
+  // Chống spam: Chỉ gửi nếu vượt mốc chưa thông báo
+  let shouldSendAlert = false;
+  if (targetAlertLevel === '99' && currentAlertLevel !== '99') {
+    shouldSendAlert = true;
+  } else if (targetAlertLevel === '90' && currentAlertLevel !== '90' && currentAlertLevel !== '99') {
+    shouldSendAlert = true;
+  }
+
+  if (shouldSendAlert) {
+    await sendTelegramAlert(app.name, providerLabel, balanceUsd, hardLimitUsd, usagePercent, alertTier as 'warning' | 'critical');
+  }
+
+  const isLowBalanceAlerted = targetAlertLevel !== 'none';
 
   // Update apps
   const { data: updatedApp, error: updateError } = await supabaseAdmin
@@ -158,6 +191,7 @@ async function syncAppBalance(app: any, supabaseAdmin: any) {
       total_used: totalUsedUsd,
       balance: balanceUsd,
       status,
+      alert_level: targetAlertLevel,
       is_low_balance_alerted: isLowBalanceAlerted,
     })
     .eq("id", app.id)

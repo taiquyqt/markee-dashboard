@@ -1205,7 +1205,11 @@ export async function fetchProjectWIPMembers(projectId: number): Promise<{ email
   });
 }
 
-export async function fetchProjectWIPsForUser(projectId: number, authorId: string, page = 0, pageSize = 20): Promise<{ items: AISession[]; total: number; hasMore: boolean }> {
+export async function fetchProjectWIPsForUser(projectId: number, authorId?: string | null, page = 0, pageSize = 20): Promise<{ items: AISession[]; total: number; hasMore: boolean }> {
+  if (!authorId || authorId === 'all') {
+    return fetchProjectWIPs(projectId, page, pageSize);
+  }
+
   const from = page * pageSize;
   const to = from + pageSize - 1;
 

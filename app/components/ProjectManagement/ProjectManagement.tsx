@@ -615,11 +615,11 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
   }
 
 
-  async function loadUserLogs(projId: number, userEmail: string, isInitial = false) {
+  async function loadUserLogs(projId: number, userEmail?: string | null, isInitial = false) {
     setLogsLoading(true);
     const nextPage = isInitial ? 0 : page + 1;
     try {
-      const result = await fetchProjectWIPsForUser(projId, userEmail, nextPage, 20);
+      const result = await fetchProjectWIPsForUser(projId, userEmail || null, nextPage, 20);
       if (isInitial) {
         setLogs(result.items);
       } else {
@@ -646,11 +646,8 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
     try {
       const activeMembers = await fetchProjectWIPMembers(project.id);
       setMembers(activeMembers);
-      if (activeMembers.length > 0) {
-        const firstEmail = activeMembers[0].email;
-        setActiveMemberEmail(firstEmail);
-        loadUserLogs(project.id, firstEmail, true);
-      }
+      setActiveMemberEmail(null);
+      loadUserLogs(project.id, null, true);
     } catch (e) {
       console.error(e);
     } finally {
@@ -658,7 +655,7 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
     }
   }
 
-  function handleSelectMember(email: string) {
+  function handleSelectMember(email: string | null) {
     setActiveMemberEmail(email);
     setLogs([]);
     setPage(0);
@@ -669,7 +666,7 @@ export default function ProjectManagement({ profile }: { profile: UserProfile })
   }
 
   function handleLoadMore() {
-    if (selectedProject && activeMemberEmail) {
+    if (selectedProject) {
       loadUserLogs(selectedProject.id, activeMemberEmail, false);
     }
   }

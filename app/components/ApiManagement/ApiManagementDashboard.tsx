@@ -739,14 +739,37 @@ export default function ApiManagementDashboard({ isTab = false }: ApiManagementD
                         <td className="px-6 py-4 font-medium text-slate-750">
                           {(() => {
                             const usagePercent = app.total_granted > 0 ? Math.min(100, (app.total_used / app.total_granted) * 100) : 0;
-                            const barColorClass = usagePercent < 75 ? 'bg-emerald-500' : usagePercent <= 90 ? 'bg-amber-500' : 'bg-red-500';
+                            // Dưới 90%: Xanh (Safe), 90% - 99%: Cam/Đỏ nhạt (Warning), >= 99%: Đỏ đậm (Critical)
+                            const barColorClass = usagePercent < 90
+                              ? 'bg-emerald-500'
+                              : usagePercent < 99
+                              ? 'bg-amber-500'
+                              : 'bg-red-600';
+
+                            const badgeText = usagePercent >= 99
+                              ? '🚨 Cạn kiệt (>=99%)'
+                              : usagePercent >= 90
+                              ? '⚠️ Sắp hết (>=90%)'
+                              : null;
+
                             return (
                               <div className="flex flex-col w-full min-w-37.5 sm:min-w-50">
-                                <div className="flex items-center justify-between text-xs font-extrabold text-slate-900">
-                                  <span>
-                                    {appVndUsed.toLocaleString('vi-VN')}đ / {appVndGranted.toLocaleString('vi-VN')}đ
+                                <div className="flex items-center justify-between text-xs font-extrabold text-slate-900 gap-2">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span>
+                                      {appVndUsed.toLocaleString('vi-VN')}đ / {appVndGranted.toLocaleString('vi-VN')}đ
+                                    </span>
+                                    {badgeText && (
+                                      <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold shrink-0 ${
+                                        usagePercent >= 99 ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-amber-100 text-amber-800 border border-amber-200'
+                                      }`}>
+                                        {badgeText}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className={`font-bold shrink-0 ${usagePercent >= 99 ? 'text-red-600' : usagePercent >= 90 ? 'text-amber-600' : 'text-slate-600'}`}>
+                                    ({usagePercent.toFixed(1)}%)
                                   </span>
-                                  <span className="text-slate-600 font-bold">({usagePercent.toFixed(1)}%)</span>
                                 </div>
                                 
                                 <div className="w-full bg-slate-100 rounded-full h-2 mt-1.5 overflow-hidden">

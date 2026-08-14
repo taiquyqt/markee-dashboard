@@ -5,7 +5,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { Edit, Trash2, ChevronDown, ChevronRight, Upload, MoreVertical, Share2, Plus, X, AlertTriangle } from 'lucide-react';
+import { Edit, Trash2, ChevronDown, ChevronRight, Upload, MoreVertical, Share2, Plus, X, AlertTriangle, Users } from 'lucide-react';
 import FilePreviewModal from '@/app/components/Shared/FilePreviewModal';
 import { MarkdownRenderer } from '@/app/components/AIChat/MarkdownRenderer';
 import {
@@ -364,13 +364,11 @@ export default function ProjectDetailContent({
         const activeMembers = await fetchProjectWIPMembers(project.id);
         setMembers(activeMembers);
 
-        // Only auto-select Member 1 if there is no wip deep-link
-        // (the wip deep-link effect owns member selection in that case)
+        // Khởi tạo mặc định chọn 'Tất cả thành viên' (null) ngoại trừ trường hợp có wip deep-link
         const wipParam = searchParams?.get('wip');
-        if (!wipParam && activeMembers.length > 0) {
-          const firstEmail = activeMembers[0].email;
-          setActiveMemberEmail(firstEmail);
-          loadUserLogs(project.id, firstEmail, true);
+        if (!wipParam) {
+          setActiveMemberEmail(null);
+          loadUserLogs(project.id, null, true);
         }
       } catch (e) {
         console.error(e);
@@ -400,11 +398,11 @@ export default function ProjectDetailContent({
     }
   }, [project.id, isReadOnly]);
 
-  async function loadUserLogs(projId: number, userEmail: string, isInitial = false) {
+  async function loadUserLogs(projId: number, userEmail?: string | null, isInitial = false) {
     setLogsLoading(true);
     const nextPage = isInitial ? 0 : page + 1;
     try {
-      const result = await fetchProjectWIPsForUser(projId, userEmail, nextPage, 20);
+      const result = await fetchProjectWIPsForUser(projId, userEmail || null, nextPage, 20);
       if (isInitial) {
         setLogs(result.items);
       } else {
@@ -419,7 +417,7 @@ export default function ProjectDetailContent({
     }
   }
 
-  function handleSelectMember(email: string) {
+  function handleSelectMember(email: string | null) {
     setActiveMemberEmail(email);
     setLogs([]);
     setPage(0);
@@ -428,9 +426,7 @@ export default function ProjectDetailContent({
   }
 
   function handleLoadMore() {
-    if (activeMemberEmail) {
-      loadUserLogs(project.id, activeMemberEmail, false);
-    }
+    loadUserLogs(project.id, activeMemberEmail, false);
   }
 
   const filteredLogs = useMemo(() => {
@@ -1433,10 +1429,30 @@ export default function ProjectDetailContent({
                   <div className="mt-3">
                     {membersLoading ? (
                       <div className="text-xs text-markee-muted py-2 animate-pulse">Đang tải...</div>
-                    ) : members.length === 0 ? (
-                      <div className="text-xs text-markee-muted py-2">Không có thành viên nào.</div>
                     ) : (
                       <div className="flex flex-col gap-1.5 max-h-56 overflow-y-auto pr-1">
+                        {/* Item 1: Tất cả thành viên (Vị trí ĐẦU TIÊN) */}
+                        <button
+                          type="button"
+                          onClick={() => handleSelectMember(null)}
+                          className={`flex items-center justify-between px-3 py-2 rounded-lg text-left transition-all border shrink-0 ${
+                            activeMemberEmail === null
+                              ? 'bg-markee-primary/10 border-markee-primary/20 text-markee-primary font-bold'
+                              : 'hover:bg-slate-100 border-transparent text-markee-text bg-white'
+                          } w-full`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-7 h-7 rounded-full bg-red-50 border border-red-100 flex items-center justify-center font-bold text-markee-primary shrink-0 select-none shadow-3xs">
+                              <Users className="w-3.5 h-3.5" />
+                            </div>
+                            <span className="text-xs font-semibold truncate">Tất cả thành viên</span>
+                          </div>
+                          {activeMemberEmail === null && (
+                            <span className="text-[10px] text-markee-primary font-bold shrink-0 ml-1">✓</span>
+                          )}
+                        </button>
+
+                        {/* Danh sách từng thành viên */}
                         {members.map((m) => {
                           const isActive = activeMemberEmail === m.email;
                           const isCurrentUser = profile && m.email === profile.email;
@@ -1445,29 +1461,34 @@ export default function ProjectDetailContent({
                               key={m.email}
                               type="button"
                               onClick={() => handleSelectMember(m.email)}
-                              className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all border shrink-0 ${
+                              className={`flex items-center justify-between px-3 py-2 rounded-lg text-left transition-all border shrink-0 ${
                                 isActive
                                   ? 'bg-markee-primary/10 border-markee-primary/20 text-markee-primary font-bold'
                                   : 'hover:bg-slate-100 border-transparent text-markee-text bg-white'
                               } w-full`}
                             >
-                              <div
-                                className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-[10px] text-white shrink-0 select-none shadow-3xs"
-                                style={{ backgroundColor: m.avatarColor || '#E3000F' }}
-                              >
-                                {getInitials(m.name)}
-                              </div>
-                              <div className="min-w-0">
-                                <div className="text-xs font-semibold truncate leading-tight flex items-center">
-                                  <span>{m.name}</span>
-                                  {isCurrentUser && (
-                                    <span className="text-[9px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded-full ml-1.5 font-normal shrink-0">
-                                      Bạn
-                                    </span>
-                                  )}
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div
+                                  className="w-7 h-7 rounded-full flex items-center justify-center font-bold text-[10px] text-white shrink-0 select-none shadow-3xs"
+                                  style={{ backgroundColor: m.avatarColor || '#E3000F' }}
+                                >
+                                  {getInitials(m.name)}
                                 </div>
-                                <div className="text-[10px] text-markee-muted truncate mt-0.5">@{m.email.split('@')[0]}</div>
+                                <div className="min-w-0">
+                                  <div className="text-xs font-semibold truncate leading-tight flex items-center">
+                                    <span>{m.name}</span>
+                                    {isCurrentUser && (
+                                      <span className="text-[9px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded-full ml-1.5 font-normal shrink-0">
+                                        Bạn
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] text-markee-muted truncate mt-0.5">@{m.email.split('@')[0]}</div>
+                                </div>
                               </div>
+                              {isActive && (
+                                <span className="text-[10px] text-markee-primary font-bold shrink-0 ml-1">✓</span>
+                              )}
                             </button>
                           );
                         })}

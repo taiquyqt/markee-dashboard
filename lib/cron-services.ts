@@ -241,18 +241,65 @@ export async function runApiBalanceSyncCheck() {
     const alertResults: any[] = [];
 
     for (const app of apps) {
-      const balance = Number(app.remaining_balance || 0);
-      const limit = Number(app.monthly_budget_usd || 0);
+      const balance = Number(app.remaining_balance || app.balance || 0);
+      const limit = Number(app.monthly_budget_usd || app.total_granted || 0);
+      const used = Number(app.total_used || (limit > 0 ? limit - balance : 0));
       const providerName = app.provider || "AI Provider";
+      
+      const usagePercent = limit > 0 ? (used / limit) * 100 : 0;
+      const currentAlertLevel = String(app.alert_level || (app.is_low_balance_alerted ? '90' : 'none'));
 
-      // Cảnh báo nếu số dư khả dụng <= 15% hạn mức ngân sách
-      const warningThreshold = limit * 0.15;
-      if (limit > 0 && balance <= warningThreshold) {
-        const usagePercent = limit > 0 ? ((limit - balance) / limit) * 100 : 0;
-        const text = `⚠️ <b>CẢNH BÁO SẮP CẠN SỐ DƯ API</b> ⚠️\n\nỨng dụng: <b>${app.name}</b> (${providerName})\nHạn mức còn lại: <code>$${balance.toFixed(2)}</code> (~ ${(balance * 3250).toLocaleString("vi-VN")}đ)\nTổng ngân sách cấp: <code>$${limit.toFixed(2)}</code> (~ ${(limit * 3250).toLocaleString("vi-VN")}đ)\nTỷ lệ sử dụng: <b>${usagePercent.toFixed(1)}%</b>\n\n🔴 <i>Vui lòng nạp thêm ngân sách tại ${providerName} để tránh gián đoạn dịch vụ.</i>`;
+      let targetAlertLevel = 'none';
+      let alertTier: 'none' | 'warning' | 'critical' = 'none';
 
-        const res = await sendTelegramMessage(text, threadId);
-        alertResults.push({ app: app.name, balance, result: res });
+      if (usagePercent >= 99) {
+        targetAlertLevel = '99';
+        alertTier = 'critical';
+      } else if (usagePercent >= 90) {
+        targetAlertLevel = '90';
+        alertTier = 'warning';
+      } else {
+        targetAlertLevel = 'none';
+        alertTier = 'none';
+      }
+
+      // Check anti-spam condition
+      let shouldSend = false;
+      if (targetAlertLevel === '99' && currentAlertLevel !== '99') {
+        shouldSend = true;
+      } else if (targetAlertLevel === '90' && currentAlertLevel !== '90' && currentAlertLevel !== '99') {
+        shouldSend = true;
+      }
+
+      if (shouldSend) {
+        let text = '';
+        if (alertTier === 'critical') {
+          text = `🚨 <b>KHẨN CẤP: API CẠN KIỆT NGÂN SÁCH</b> 🚨\n\n🚨 KHẨN CẤP: Ứng dụng <b>${app.name}</b> (${providerName}) đã cạn kiệt ngân sách (<b>${usagePercent.toFixed(1)}%</b>). Vui lòng nạp tiền ngay để không gián đoạn dịch vụ!\n\nHạn mức còn lại: <code>$${balance.toFixed(2)}</code> (~ ${(balance * 3250).toLocaleString("vi-VN")}đ)\nTổng ngân sách cấp: <code>$${limit.toFixed(2)}</code> (~ ${(limit * 3250).toLocaleString("vi-VN")}đ)`;
+        } else if (alertTier === 'warning') {
+          text = `⚠️ <b>CẢNH BÁO SẮP HẾT NGÂN SÁCH API</b> ⚠️\n\n⚠️ Chú ý: Ứng dụng <b>${app.name}</b> (${providerName}) đã dùng hết <b>${usagePercent.toFixed(1)}%</b> ngân sách (Chỉ còn dưới 10%).\nHạn mức còn lại: <code>$${balance.toFixed(2)}</code> (~ ${(balance * 3250).toLocaleString("vi-VN")}đ)\nTổng ngân sách cấp: <code>$${limit.toFixed(2)}</code> (~ ${(limit * 3250).toLocaleString("vi-VN")}đ)`;
+        }
+
+        if (text) {
+          const res = await sendTelegramMessage(text, threadId);
+          alertResults.push({ app: app.name, usagePercent, alertTier, result: res });
+
+          await supabaseAdmin
+            .from("apps")
+            .update({
+              alert_level: targetAlertLevel,
+              is_low_balance_alerted: true,
+            })
+            .eq("id", app.id);
+        }
+      } else if (targetAlertLevel === 'none' && currentAlertLevel !== 'none') {
+        // Reset DB alert level when balance is refilled
+        await supabaseAdmin
+          .from("apps")
+          .update({
+            alert_level: 'none',
+            is_low_balance_alerted: false,
+          })
+          .eq("id", app.id);
       }
     }
 
@@ -264,6 +311,180 @@ export async function runApiBalanceSyncCheck() {
     };
   } catch (err: any) {
     console.error("[Cron Service] Exception in runApiBalanceSyncCheck:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+// ==========================================
+// LUỒNG TỰ ĐỘNG ĐỒNG BỘ SỐ DƯ TỪ NHÀ CUNG CẤP (7:00 AM)
+// ==========================================
+export async function runApiBalanceSupplierSync() {
+  console.log("[Cron Service] Starting 7:00 AM API Balance Supplier Sync...");
+  try {
+    const supabaseAdmin = getSupabaseAdmin();
+
+    const { data: apps, error: appsError } = await supabaseAdmin.from("apps").select("*");
+    if (appsError) {
+      console.error("[Cron Service] Error fetching apps for supplier sync:", appsError.message);
+      return { success: false, error: appsError.message };
+    }
+
+    if (!apps || apps.length === 0) {
+      console.log("[Cron Service] Không có app nào để đồng bộ số dư với NCC");
+      return { success: true, message: "Không có app nào để đồng bộ", results: [] };
+    }
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const todayStr = now.toISOString().split("T")[0];
+    const startDate = `${currentYear}-01-01`;
+    const endDate = todayStr;
+
+    const results: any[] = [];
+
+    for (const app of apps) {
+      const provider = app.provider || "shopaikey";
+      const providerLabel = provider === "dataforseo" ? "DataForSEO" : "ShopAIKey";
+
+      try {
+        let hardLimitUsd = 0;
+        let totalUsedUsd = 0;
+        let balanceUsd = 0;
+
+        if (provider === "dataforseo") {
+          const apiLogin = app.api_login;
+          const apiPassword = app.secret_key;
+
+          if (!apiLogin || !apiPassword || !apiLogin.trim() || !apiPassword.trim()) {
+            results.push({
+              app_id: app.id,
+              app_name: app.name,
+              provider,
+              status: "skipped",
+              reason: "Thiếu API Login hoặc API Password",
+            });
+            continue;
+          }
+
+          const authHeader = `Basic ${Buffer.from(`${apiLogin.trim()}:${apiPassword.trim()}`).toString("base64")}`;
+
+          const res = await fetch("https://api.dataforseo.com/v3/appendix/user_data", {
+            method: "GET",
+            headers: { Authorization: authHeader },
+            cache: "no-store",
+          });
+
+          if (!res.ok) {
+            throw new Error(`DataForSEO API error (HTTP ${res.status})`);
+          }
+
+          const data = await res.json();
+          if (data.status_code !== 20000) {
+            throw new Error(data.message || `DataForSEO API error (Code ${data.status_code})`);
+          }
+
+          const moneyData = data.tasks?.[0]?.result?.[0]?.money;
+          if (!moneyData) {
+            throw new Error("Không thể đọc thông tin số dư tài chính từ DataForSEO");
+          }
+
+          balanceUsd = Math.round(Number(moneyData.balance || 0) * 100) / 100;
+          hardLimitUsd = Math.round(Number(moneyData.total || 0) * 100) / 100;
+          totalUsedUsd = Math.round(Math.max(0, hardLimitUsd - balanceUsd) * 100) / 100;
+        } else {
+          // ShopAIKey
+          const key = app.secret_key;
+          if (!key || !key.trim()) {
+            results.push({
+              app_id: app.id,
+              app_name: app.name,
+              provider,
+              status: "skipped",
+              reason: "Secret Key rỗng",
+            });
+            continue;
+          }
+
+          const subRes = await fetch("https://api.shopaikey.com/v1/dashboard/billing/subscription", {
+            method: "GET",
+            headers: { Authorization: `Bearer ${key.trim()}` },
+            cache: "no-store",
+          });
+
+          if (!subRes.ok) {
+            throw new Error(`Billing API error (HTTP ${subRes.status})`);
+          }
+
+          const subData = await subRes.json();
+          const hardLimitUsdRaw = Number(subData.hard_limit_usd || 0);
+          hardLimitUsd = Math.round(hardLimitUsdRaw * 100) / 100;
+
+          const usageRes = await fetch(
+            `https://api.shopaikey.com/v1/dashboard/billing/usage?start_date=${startDate}&end_date=${endDate}`,
+            {
+              method: "GET",
+              headers: { Authorization: `Bearer ${key.trim()}` },
+              cache: "no-store",
+            }
+          );
+
+          if (!usageRes.ok) {
+            throw new Error(`Usage API error (HTTP ${usageRes.status})`);
+          }
+
+          const usageData = await usageRes.json();
+          const totalUsageCents = Number(usageData.total_usage || 0);
+          totalUsedUsd = Math.round((totalUsageCents / 100) * 100) / 100;
+          balanceUsd = Math.round((hardLimitUsd - totalUsedUsd) * 100) / 100;
+        }
+
+        const status = balanceUsd > 0 ? "active" : "depleted";
+
+        // Cập nhật Database
+        await supabaseAdmin
+          .from("apps")
+          .update({
+            total_granted: hardLimitUsd,
+            total_used: totalUsedUsd,
+            balance: balanceUsd,
+            monthly_budget_usd: hardLimitUsd,
+            remaining_balance: balanceUsd,
+            status,
+          })
+          .eq("id", app.id);
+
+        // Lưu lịch sử balance_history
+        await supabaseAdmin.from("balance_history").insert({
+          app_id: app.id,
+          total_used: totalUsedUsd,
+          balance: balanceUsd,
+        });
+
+        results.push({
+          app_id: app.id,
+          app_name: app.name,
+          provider: providerLabel,
+          status: "success",
+          total_granted: hardLimitUsd,
+          total_used: totalUsedUsd,
+          balance: balanceUsd,
+        });
+      } catch (err: any) {
+        console.error(`[Cron Service] Supplier sync failed for app ${app.name}:`, err.message);
+        results.push({
+          app_id: app.id,
+          app_name: app.name,
+          provider: providerLabel,
+          status: "failed",
+          reason: err.message,
+        });
+      }
+    }
+
+    console.log(`[Cron Service] Completed 7:00 AM API Balance Supplier Sync: ${results.length} apps processed.`);
+    return { success: true, count: results.length, results };
+  } catch (err: any) {
+    console.error("[Cron Service] Exception in runApiBalanceSupplierSync:", err);
     return { success: false, error: err.message };
   }
 }
