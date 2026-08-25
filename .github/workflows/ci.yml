@@ -46,3 +46,12 @@ jobs:
           NEXT_PUBLIC_OPENROUTER_API_KEY: ci-placeholder
           NEXT_PUBLIC_SHOPAIKEY_API_KEY: ci-placeholder
         run: pnpm build
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, markee-dashboard]
+    steps:
+      - name: Deploy (tai dung script cron dang chay - fetch/build/up/smoke-test/rollback)
+        run: /home/testcdp/app/central-ai/deploy-markee-dashboard.sh
+
