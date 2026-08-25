@@ -70,7 +70,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { customer_name, company_name, phone, vps_ip, package_name, expires_at, notes } = body;
+    const { customer_name, company_name, phone, vps_ip, package_name, price, expires_at, notes } = body;
 
     // Validate các trường bắt buộc
     if (!customer_name || !vps_ip || !package_name || !expires_at) {
@@ -82,12 +82,17 @@ export async function POST(req: NextRequest) {
 
     const internalSupabase = getInternalSupabase();
 
+    const parsedPrice = price !== undefined && price !== null && price !== ''
+      ? Number(String(price).replace(/\D/g, ''))
+      : null;
+
     const payload = {
       customer_name: customer_name.trim(),
       company_name: company_name ? company_name.trim() : null,
       phone: phone ? phone.trim() : null,
       vps_ip: vps_ip.trim(),
       package_name: package_name.trim(),
+      price: parsedPrice,
       expires_at: expires_at,
       notes: notes ? notes.trim() : null,
       status: 'active',
@@ -116,7 +121,7 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
-    const { id, customer_name, company_name, phone, vps_ip, package_name, expires_at, notes, status } = body;
+    const { id, customer_name, company_name, phone, vps_ip, package_name, price, expires_at, notes, status } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'Thiếu ID bản ghi cần cập nhật' }, { status: 400 });
@@ -131,12 +136,17 @@ export async function PUT(req: NextRequest) {
 
     const internalSupabase = getInternalSupabase();
 
+    const parsedPrice = price !== undefined && price !== null && price !== ''
+      ? Number(String(price).replace(/\D/g, ''))
+      : null;
+
     const updatePayload: Record<string, any> = {
       customer_name: customer_name.trim(),
       company_name: company_name ? company_name.trim() : null,
       phone: phone ? phone.trim() : null,
       vps_ip: vps_ip.trim(),
       package_name: package_name.trim(),
+      price: parsedPrice,
       expires_at: expires_at,
       notes: notes ? notes.trim() : null,
     };

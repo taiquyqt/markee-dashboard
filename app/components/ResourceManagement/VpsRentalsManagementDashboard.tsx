@@ -29,6 +29,7 @@ export interface VpsRentalItem {
   phone?: string | null;
   vps_ip: string;
   package_name: string;
+  price?: number | string | null;
   expires_at: string;
   notes?: string | null;
   status?: string | null;
@@ -67,9 +68,91 @@ export default function VpsRentalsManagementDashboard() {
   const [phone, setPhone] = useState('');
   const [vpsIp, setVpsIp] = useState('');
   const [packageName, setPackageName] = useState('VPS Pro - 4 vCPU / 8GB RAM');
+  const [price, setPrice] = useState(''); // Lưu chuỗi số thuần túy (e.g. '200000')
+  const [isPriceFocused, setIsPriceFocused] = useState(false);
   const [expiresAt, setExpiresAt] = useState('');
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Format số tiền có dấu chấm phân cách hàng nghìn (1.000.000) khi hiển thị (Blur)
+  const formatPriceString = (val: string | number | undefined | null): string => {
+    if (val === undefined || val === null || val === '') return '';
+    const cleanStr = String(val).replace(/\D/g, '');
+    if (!cleanStr) return '';
+    const num = parseInt(cleanStr, 10);
+    return isNaN(num) ? '' : num.toLocaleString('de-DE');
+  };
+
+  // Hàm đọc số tiền bằng chữ tiếng Việt real-time
+  const numberToVietnameseWords = (n: number | string): string => {
+    if (n === undefined || n === null || n === '') return '';
+    const num = typeof n === 'number' ? n : parseInt(String(n).replace(/\D/g, ''), 10);
+    if (isNaN(num) || num <= 0) return '';
+
+    const units = ['', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín'];
+
+    function readTriple(triple: number, showZeroHundred: boolean): string {
+      const hundred = Math.floor(triple / 100);
+      const ten = Math.floor((triple % 100) / 10);
+      const unit = triple % 10;
+
+      let res = '';
+
+      if (hundred > 0 || showZeroHundred) {
+        res += units[hundred] + ' trăm ';
+      }
+
+      if (ten > 1) {
+        res += units[ten] + ' mươi ';
+        if (unit === 1) res += 'mốt ';
+        else if (unit === 5) res += 'lăm ';
+        else if (unit > 0) res += units[unit] + ' ';
+      } else if (ten === 1) {
+        res += 'mười ';
+        if (unit === 1) res += 'một ';
+        else if (unit === 5) res += 'lăm ';
+        else if (unit > 0) res += units[unit] + ' ';
+      } else {
+        if (hundred > 0 || showZeroHundred) {
+          if (unit > 0) res += 'lẻ ' + units[unit] + ' ';
+        } else {
+          if (unit > 0) res += units[unit] + ' ';
+        }
+      }
+
+      return res;
+    }
+
+    const bigUnits = ['', 'nghìn', 'triệu', 'tỷ', 'nghìn tỷ', 'triệu tỷ'];
+
+    let tempNum = num;
+    let strResult = '';
+    let unitIdx = 0;
+
+    while (tempNum > 0) {
+      const triple = tempNum % 1000;
+      tempNum = Math.floor(tempNum / 1000);
+
+      if (triple > 0) {
+        const showZeroHundred = tempNum > 0;
+        const tripleStr = readTriple(triple, showZeroHundred);
+        strResult = tripleStr.trim() + ' ' + bigUnits[unitIdx] + ' ' + strResult;
+      }
+      unitIdx++;
+    }
+
+    strResult = strResult.trim();
+    if (!strResult) return '';
+
+    const formatted = strResult.charAt(0).toUpperCase() + strResult.slice(1) + ' đồng';
+    return formatted.replace(/\s+/g, ' ');
+  };
+
+  // Sự kiện nhập liệu: Chỉ tháo bỏ dấu chấm và lưu chuỗi số thuần túy (e.g. '200000')
+  const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const cleanStr = e.target.value.replace(/\D/g, '');
+    setPrice(cleanStr);
+  };
 
   // Modal Xóa
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -164,6 +247,8 @@ export default function VpsRentalsManagementDashboard() {
     setPhone('');
     setVpsIp('');
     setPackageName('VPS Pro - 4 vCPU / 8GB RAM');
+    setPrice('');
+    setIsPriceFocused(false);
     setExpiresAt('');
     setNotes('');
     setSelectedLeadIndex('');
@@ -178,7 +263,15 @@ export default function VpsRentalsManagementDashboard() {
     setPhone(item.phone || '');
     setVpsIp(item.vps_ip || '');
     setPackageName(item.package_name || 'VPS Pro - 4 vCPU / 8GB RAM');
-    
+
+    // Nạp chuỗi số thuần túy từ DB vào state price
+    if (item.price !== undefined && item.price !== null && item.price !== '') {
+      setPrice(String(item.price).replace(/\D/g, ''));
+    } else {
+      setPrice('');
+    }
+    setIsPriceFocused(false);
+
     // Định dạng YYYY-MM-DD cho date input
     if (item.expires_at) {
       const formattedDateStr = item.expires_at.includes('T')
@@ -229,6 +322,7 @@ export default function VpsRentalsManagementDashboard() {
         phone: phone,
         vps_ip: vpsIp,
         package_name: packageName,
+        price: price ? Number(price.replace(/\D/g, '')) : null,
         expires_at: expiresAt,
         notes: notes,
       };
@@ -256,6 +350,7 @@ export default function VpsRentalsManagementDashboard() {
       setPhone('');
       setVpsIp('');
       setPackageName('VPS Pro - 4 vCPU / 8GB RAM');
+      setPrice('');
       setExpiresAt('');
       setNotes('');
       setSelectedLeadIndex('');
@@ -472,6 +567,8 @@ export default function VpsRentalsManagementDashboard() {
                   <th className="py-3.5 px-4">IP VPS</th>
                   <th className="py-3.5 px-4">Gói dịch vụ</th>
                   <th className="py-3.5 px-4">Số điện thoại (Gọi hối cước)</th>
+                  <th className="py-3.5 px-4">Giá</th>
+                  <th className="py-3.5 px-4">Ghi chú</th>
                   <th className="py-3.5 px-4">Ngày hết hạn cước</th>
                   <th className="py-3.5 px-4 text-right">Thao tác</th>
                 </tr>
@@ -566,6 +663,37 @@ export default function VpsRentalsManagementDashboard() {
                           </a>
                         ) : (
                           <span className="text-slate-400 italic">Chưa có SĐT</span>
+                        )}
+                      </td>
+
+                      {/* Giá */}
+                      <td className="py-3.5 px-4 font-bold text-slate-800 text-xs whitespace-nowrap">
+                        {item.price ? (
+                          `${Number(item.price).toLocaleString('de-DE')} ₫`
+                        ) : (
+                          <span className="text-slate-400 font-normal italic">--</span>
+                        )}
+                      </td>
+
+                      {/* Ghi chú */}
+                      <td className="py-3.5 px-4 max-w-45">
+                        {item.notes ? (
+                          <div className="relative group inline-block max-w-full">
+                            <p className="text-xs text-slate-600 font-medium truncate cursor-help">
+                              {item.notes}
+                            </p>
+
+                            {/* Custom Tooltip nổi hiện đại */}
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:flex flex-col items-center z-50 pointer-events-none w-max max-w-xs animate-in fade-in zoom-in-95 duration-150">
+                              <div className="bg-slate-900 border border-slate-700 text-slate-50 text-xs py-2 px-3 rounded-xl shadow-2xl break-words leading-relaxed text-left font-normal whitespace-normal">
+                                {item.notes}
+                              </div>
+                              {/* Tooltip Arrow */}
+                              <div className="w-2 h-2 bg-slate-900 border-r border-b border-slate-700 rotate-45 -mt-1"></div>
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 italic text-[11px]">Không có</span>
                         )}
                       </td>
 
@@ -731,23 +859,24 @@ export default function VpsRentalsManagementDashboard() {
                 </div>
               </div>
 
-              {/* IP VPS & Gói thuê */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="vpsIpInput" className="block text-xs font-semibold text-slate-700 mb-1">
-                    Địa chỉ IP VPS <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="vpsIpInput"
-                    type="text"
-                    required
-                    value={vpsIp}
-                    onChange={(e) => setVpsIp(e.target.value)}
-                    placeholder="103.145.2.10..."
-                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white text-slate-800 font-mono focus:outline-none focus:border-markee-primary font-bold"
-                  />
-                </div>
+              {/* IP VPS */}
+              <div>
+                <label htmlFor="vpsIpInput" className="block text-xs font-semibold text-slate-700 mb-1">
+                  Địa chỉ IP VPS <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="vpsIpInput"
+                  type="text"
+                  required
+                  value={vpsIp}
+                  onChange={(e) => setVpsIp(e.target.value)}
+                  placeholder="103.145.2.10..."
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white text-slate-800 font-mono focus:outline-none focus:border-markee-primary font-bold"
+                />
+              </div>
 
+              {/* Gói dịch vụ & Giá thuê (VNĐ) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label htmlFor="packageNameInput" className="block text-xs font-semibold text-slate-700 mb-1">
                     Gói dịch vụ VPS <span className="text-red-500">*</span>
@@ -761,6 +890,42 @@ export default function VpsRentalsManagementDashboard() {
                     placeholder="VPS Pro - 4 vCPU / 8GB RAM..."
                     className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white text-slate-800 focus:outline-none focus:border-markee-primary font-medium"
                   />
+                </div>
+
+                <div>
+                  <label htmlFor="priceInput" className="block text-xs font-semibold text-slate-700 mb-1">
+                    Giá tiền thuê (VNĐ)
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="priceInput"
+                      type="text"
+                      inputMode="numeric"
+                      value={isPriceFocused ? price : formatPriceString(price)}
+                      onChange={handlePriceChange}
+                      onFocus={(e) => {
+                        setIsPriceFocused(true);
+                        e.target.select();
+                      }}
+                      onBlur={() => setIsPriceFocused(false)}
+                      placeholder="vd: 1.000.000..."
+                      className="w-full pl-3 pr-12 py-2 text-xs border border-slate-200 rounded-lg bg-white text-slate-800 focus:outline-none focus:border-markee-primary font-bold"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded pointer-events-none select-none">
+                      VNĐ
+                    </span>
+                  </div>
+                  {price && numberToVietnameseWords(price) ? (
+                    <div
+                      className="text-[11px] font-medium text-emerald-600 mt-1.5 italic flex items-baseline gap-1.5 overflow-hidden"
+                      title={`Bằng chữ: ${numberToVietnameseWords(price)}`}
+                    >
+                      <span className="shrink-0 font-semibold text-emerald-600 select-none">Bằng chữ:</span>
+                      <span className="font-bold text-emerald-700 truncate">
+                        {numberToVietnameseWords(price)}
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 
