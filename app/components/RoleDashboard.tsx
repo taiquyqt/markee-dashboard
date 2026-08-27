@@ -595,6 +595,8 @@ export default function RoleDashboard({ initialTab }: { initialTab?: string }) {
     }
   }, [profile, router]);
 
+  const wasCollapsedBeforePreviewRef = useRef<boolean>(false);
+
   useEffect(() => {
     const handleOpenPreview = (e: Event) => {
       const customEvent = e as CustomEvent;
@@ -602,11 +604,26 @@ export default function RoleDashboard({ initialTab }: { initialTab?: string }) {
         setPreviewFile(customEvent.detail);
       }
     };
+
+    const handleFullscreenChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ isFullscreen: boolean }>;
+      const isFullscreen = customEvent.detail?.isFullscreen;
+
+      if (isFullscreen) {
+        wasCollapsedBeforePreviewRef.current = isCollapsed;
+        setIsCollapsed(true);
+      } else {
+        setIsCollapsed(wasCollapsedBeforePreviewRef.current);
+      }
+    };
+
     window.addEventListener('markee_open_file_preview', handleOpenPreview);
+    window.addEventListener('preview-fullscreen-change', handleFullscreenChange);
     return () => {
       window.removeEventListener('markee_open_file_preview', handleOpenPreview);
+      window.removeEventListener('preview-fullscreen-change', handleFullscreenChange);
     };
-  }, []);
+  }, [isCollapsed]);
   useEffect(() => {
   if (activeTab === 'projects') {
     setIsCustomerMenuOpen(true);

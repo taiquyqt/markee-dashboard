@@ -369,6 +369,15 @@ export default function FileManagement({ setActiveTab, profile }: FileManagement
         isOpen={!!previewFile}
         onClose={() => setPreviewFile(null)}
         file={previewFile}
+        filesList={files.map(f => ({
+          file_name: f.file_name,
+          storage_path: f.storage_path,
+          mime_type: f.mime_type || '',
+          source_url: getDownloadUrl(f.storage_path, f.file_name),
+          file_size: f.size_bytes,
+          created_at: f.created_at,
+          description: f.ai_sessions?.prompt_content || undefined,
+        }))}
         onSelectForChat={() => {
           if (setActiveTab) {
             setActiveTab('ai_chat');

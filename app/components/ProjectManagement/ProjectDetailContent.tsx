@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Edit, Trash2, ChevronDown, ChevronRight, Upload, MoreVertical, Share2, Plus, X, AlertTriangle, Users } from 'lucide-react';
-import FilePreviewModal from '@/app/components/Shared/FilePreviewModal';
+import FilePreviewModal, { type PreviewFileItem } from '@/app/components/Shared/FilePreviewModal';
 import { MarkdownRenderer } from '@/app/components/AIChat/MarkdownRenderer';
 import {
   fetchProjectWIPMembers,
@@ -192,12 +192,7 @@ export default function ProjectDetailContent({
   const [hasMore, setHasMore] = useState(false);
 
   // File preview state
-  const [previewFile, setPreviewFile] = useState<{
-    file_name: string;
-    storage_path: string;
-    mime_type: string;
-    source_url: string;
-  } | null>(null);
+  const [previewFile, setPreviewFile] = useState<PreviewFileItem | null>(null);
 
   // Modals inside detail content
   const [activeEditWIP, setActiveEditWIP] = useState<AISession | null>(null);
@@ -1813,10 +1808,19 @@ export default function ProjectDetailContent({
                                         </div>
 
                                         {/* Render duy nhất file được chọn */}
-                                        <div className="flex items-center justify-between gap-2 bg-white border border-slate-100 rounded-lg p-2">
+                                        <div
+                                          onClick={() => setPreviewFile({
+                                            file_name: fName,
+                                            storage_path: sPath,
+                                            mime_type: fType,
+                                            source_url: sourceUrl,
+                                            file_size: fSize,
+                                          })}
+                                          className="flex items-center justify-between gap-2 bg-white hover:bg-slate-50 border border-slate-100 rounded-lg p-2 cursor-pointer transition-colors group"
+                                        >
                                           <div className="flex items-center gap-1.5 min-w-0">
                                             <span className="text-sm shrink-0">📄</span>
-                                            <span className="font-semibold text-slate-700 truncate text-[11px]" title={fName}>
+                                            <span className="font-semibold text-slate-700 group-hover:text-purple-700 truncate text-[11px]" title={fName}>
                                               {fName}
                                             </span>
                                             <span className="text-[9px] text-slate-400 shrink-0 font-medium">
@@ -1824,7 +1828,7 @@ export default function ProjectDetailContent({
                                             </span>
                                           </div>
                                           
-                                          <div className="flex items-center gap-1 shrink-0">
+                                          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                                             <button
                                               type="button"
                                               onClick={() => setPreviewFile({
