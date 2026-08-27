@@ -12,7 +12,11 @@ import {
   Download,
   ExternalLink,
   MessageSquare,
-  ChevronDown
+  ChevronDown,
+  Info,
+  Layers,
+  FileCode2,
+  Check
 } from 'lucide-react';
 
 export interface PreviewFileItem {
@@ -31,19 +35,34 @@ interface FilePreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
   file: PreviewFileItem | null;
+  wipContent?: string;
   filesList?: PreviewFileItem[];
   onSelectForChat?: (file: PreviewFileItem) => void;
 }
+
+// Regex trích xuất phiên bản từ tên tệp (VD: -v1, _v2, -v3.5, v2, _v1.0)
+const extractVersionFromFileName = (name: string): string | null => {
+  if (!name) return null;
+  const match =
+    name.match(/(?:[-_]v|v)(\d+(?:\.\d+)?)(?=\.[a-z0-9]+$|$)/i) ||
+    name.match(/[-_](\d+(?:\.\d+)?)(?=\.[a-z0-9]+$|$)/i);
+  if (match && match[1]) {
+    return `v${match[1]}`;
+  }
+  return null;
+};
 
 export default function FilePreviewModal({
   isOpen,
   onClose,
   file,
+  wipContent,
   filesList = [],
   onSelectForChat,
 }: FilePreviewModalProps) {
   const [activeFile, setActiveFile] = useState<PreviewFileItem | null>(null);
   const [viewMode, setViewMode] = useState<'fullscreen' | 'minimized'>('fullscreen');
+  const [activeTab, setActiveTab] = useState<'description' | 'versions' | 'files'>('description');
 
   const [textContent, setTextContent] = useState<string>('');
   const [loadingText, setLoadingText] = useState<boolean>(false);
@@ -54,6 +73,7 @@ export default function FilePreviewModal({
     if (isOpen && file) {
       setActiveFile(file);
       setViewMode('fullscreen');
+      setActiveTab('description');
     } else {
       setActiveFile(null);
       setTextContent('');
@@ -79,7 +99,7 @@ export default function FilePreviewModal({
     };
   }, [isOpen, file, viewMode]);
 
-  // Danh sách tệp hiển thị để chuyển đổi
+  // Danh sách tệp đính kèm hiển thị để chuyển đổi
   const currentFilesList = React.useMemo(() => {
     if (filesList && filesList.length > 0) {
       return filesList;
@@ -330,7 +350,7 @@ export default function FilePreviewModal({
       )}
 
       {/* ==========================================
-          CHẾ ĐỘ 2: PHÓNG TO (FULLSCREEN OVERLAY)
+          CHẾ ĐỘ 2: PHÓNG TO (FULLSCREEN OVERLAY SPLIT-PANE)
          ========================================== */}
       {viewMode === 'fullscreen' && (
         <div className="fixed inset-y-0 right-0 left-0 md:left-20 z-[99999] bg-slate-950 flex flex-col overflow-hidden animate-in fade-in duration-150">
@@ -427,72 +447,248 @@ export default function FilePreviewModal({
               </div>
             </div>
 
-            {/* Vùng xem trước tệp 100% chiều rộng */}
-            <div className="flex-1 w-full h-full relative overflow-hidden bg-slate-950 flex flex-col">
-              {renderType === 'text' && (
-                <div className="w-full h-full p-4 md:p-6 overflow-auto bg-slate-950 text-slate-200 font-mono text-xs md:text-sm leading-relaxed select-text">
-                  {loadingText ? (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-950 text-slate-400">
-                      <Loader className="w-6 h-6 animate-spin text-purple-500" />
-                      <span>Đang tải nội dung tệp...</span>
-                    </div>
-                  ) : fetchError ? (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-950 text-rose-400 px-4 text-center">
-                      <AlertTriangle className="w-8 h-8 text-rose-500 mb-1" />
-                      <span className="font-bold text-sm">Không thể xem trực tiếp nội dung</span>
-                      <span className="text-[11px] text-slate-400">{fetchError}</span>
-                    </div>
-                  ) : (
-                    <pre className="overflow-auto whitespace-pre-wrap break-all select-text font-mono">
-                      <code>{textContent}</code>
-                    </pre>
-                  )}
-                </div>
-              )}
-
-              {renderType === 'html-iframe' && (
-                <div className="w-full h-full relative bg-white">
-                  {loadingText ? (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white text-slate-500">
-                      <Loader className="w-6 h-6 animate-spin text-purple-500" />
-                      <span>Đang tải trang HTML...</span>
-                    </div>
-                  ) : fetchError ? (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white text-rose-500 px-4 text-center">
-                      <AlertTriangle className="w-8 h-8 text-rose-500 mb-1" />
-                      <span className="font-bold text-sm">Không thể xem trực tiếp HTML</span>
-                      <span className="text-[11px] text-slate-400">{fetchError}</span>
-                    </div>
-                  ) : (
-                    <iframe
-                      srcDoc={textContent}
-                      className="w-full h-full border-0 bg-white"
-                      title={fileName}
-                    />
-                  )}
-                </div>
-              )}
-
-              {renderType === 'office-pdf' && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-slate-900 text-slate-200 p-6 text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mb-1">
-                    <FileText className="w-8 h-8" />
+            {/* Split-pane Body (Vùng Trái Iframe + Vùng Phải Info Panel ~350px) */}
+            <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative bg-slate-950">
+              {/* Vùng Trái (Main Preview Iframe / Text) */}
+              <div className="flex-1 h-full relative overflow-hidden bg-slate-950 flex flex-col">
+                {renderType === 'text' && (
+                  <div className="w-full h-full p-4 md:p-6 overflow-auto bg-slate-950 text-slate-200 font-mono text-xs md:text-sm leading-relaxed select-text">
+                    {loadingText ? (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-950 text-slate-400">
+                        <Loader className="w-6 h-6 animate-spin text-purple-500" />
+                        <span>Đang tải nội dung tệp...</span>
+                      </div>
+                    ) : fetchError ? (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-950 text-rose-400 px-4 text-center">
+                        <AlertTriangle className="w-8 h-8 text-rose-500 mb-1" />
+                        <span className="font-bold text-sm">Không thể xem trực tiếp nội dung</span>
+                        <span className="text-[11px] text-slate-400">{fetchError}</span>
+                      </div>
+                    ) : (
+                      <pre className="overflow-auto whitespace-pre-wrap break-all select-text font-mono">
+                        <code>{textContent}</code>
+                      </pre>
+                    )}
                   </div>
-                  <span className="font-bold text-base text-slate-100">Định dạng tệp này không hỗ trợ đọc trực tiếp</span>
-                  <p className="text-xs text-slate-400 max-w-md font-medium leading-relaxed">
-                    Bạn có thể mở tệp trong thẻ trình duyệt mới hoặc tải tệp xuống máy tính để xem bằng phần mềm chuyên dụng.
-                  </p>
-                  <a
-                    href={sourceUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center gap-2"
+                )}
+
+                {renderType === 'html-iframe' && (
+                  <div className="w-full h-full relative bg-white">
+                    {loadingText ? (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white text-slate-500">
+                        <Loader className="w-6 h-6 animate-spin text-purple-500" />
+                        <span>Đang tải trang HTML...</span>
+                      </div>
+                    ) : fetchError ? (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white text-rose-500 px-4 text-center">
+                        <AlertTriangle className="w-8 h-8 text-rose-500 mb-1" />
+                        <span className="font-bold text-sm">Không thể xem trực tiếp HTML</span>
+                        <span className="text-[11px] text-slate-400">{fetchError}</span>
+                      </div>
+                    ) : (
+                      <iframe
+                        srcDoc={textContent}
+                        className="w-full h-full border-0 bg-white"
+                        title={fileName}
+                      />
+                    )}
+                  </div>
+                )}
+
+                {renderType === 'office-pdf' && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-slate-900 text-slate-200 p-6 text-center">
+                    <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mb-1">
+                      <FileText className="w-8 h-8" />
+                    </div>
+                    <span className="font-bold text-base text-slate-100">Định dạng tệp này không hỗ trợ đọc trực tiếp</span>
+                    <p className="text-xs text-slate-400 max-w-md font-medium leading-relaxed">
+                      Bạn có thể mở tệp trong thẻ trình duyệt mới hoặc tải tệp xuống máy tính để xem bằng phần mềm chuyên dụng.
+                    </p>
+                    <a
+                      href={sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center gap-2"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      <span>Mở tệp trong Tab mới</span>
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              {/* Vùng Phải (Info Panel) Rộng ~350px với 3 Tabs */}
+              <div className="w-full md:w-80 lg:w-[350px] bg-slate-900 border-t md:border-t-0 md:border-l border-slate-800 flex flex-col shrink-0">
+                {/* Header Tab Bar */}
+                <div className="flex items-center border-b border-slate-800 bg-slate-950/60 p-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('description')}
+                    className={`flex-1 py-2 px-2 text-xs font-bold rounded-lg transition-all cursor-pointer border-0 flex items-center justify-center gap-1.5 ${
+                      activeTab === 'description'
+                        ? 'bg-purple-600 text-white shadow-xs'
+                        : 'text-slate-400 hover:text-slate-200 bg-transparent'
+                    }`}
                   >
-                    <ExternalLink className="w-4 h-4" />
-                    <span>Mở tệp trong Tab mới</span>
-                  </a>
+                    <Info className="w-3.5 h-3.5" />
+                    <span>Mô tả</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('versions')}
+                    className={`flex-1 py-2 px-2 text-xs font-bold rounded-lg transition-all cursor-pointer border-0 flex items-center justify-center gap-1.5 ${
+                      activeTab === 'versions'
+                        ? 'bg-purple-600 text-white shadow-xs'
+                        : 'text-slate-400 hover:text-slate-200 bg-transparent'
+                    }`}
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>Phiên bản</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('files')}
+                    className={`flex-1 py-2 px-2 text-xs font-bold rounded-lg transition-all cursor-pointer border-0 flex items-center justify-center gap-1.5 ${
+                      activeTab === 'files'
+                        ? 'bg-purple-600 text-white shadow-xs'
+                        : 'text-slate-400 hover:text-slate-200 bg-transparent'
+                    }`}
+                  >
+                    <FileCode2 className="w-3.5 h-3.5" />
+                    <span>Tệp ({currentFilesList.length})</span>
+                  </button>
                 </div>
-              )}
+
+                {/* Tab Contents */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs text-slate-200">
+                  {/* TAB 1: MÔ TẢ */}
+                  {activeTab === 'description' && (
+                    <div className="space-y-4">
+                      {/* Thẻ Thông tin Tệp */}
+                      <div className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 font-semibold">Tên tệp:</span>
+                          <span className="font-bold text-slate-100 font-mono text-[11px] truncate max-w-[200px]" title={fileName}>
+                            {fileName}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 font-semibold">Kích thước:</span>
+                          <span className="font-bold text-purple-300">{formatSize(activeFile.file_size)}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400 font-semibold">Định dạng:</span>
+                          <span className="font-semibold text-slate-300 bg-slate-800 px-2 py-0.5 rounded text-[10px]">
+                            {mimeType || 'Tệp dữ liệu'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Nội dung Bài viết / WIP Content */}
+                      <div>
+                        <h5 className="font-bold text-slate-300 mb-2 flex items-center gap-1.5 text-xs">
+                          <span>Nội dung bài viết / Mô tả:</span>
+                        </h5>
+                        <div className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 max-h-80 overflow-y-auto leading-relaxed text-slate-300 text-xs font-medium">
+                          {wipContent || activeFile.description ? (
+                            <p className="whitespace-pre-wrap leading-relaxed">
+                              {wipContent || activeFile.description}
+                            </p>
+                          ) : (
+                            <span className="text-slate-500 italic">Chưa có mô tả chi tiết cho tệp này.</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 2: PHIÊN BẢN */}
+                  {activeTab === 'versions' && (
+                    <div className="space-y-3">
+                      <h5 className="font-bold text-slate-300 mb-1">Kiểm tra phiên bản tệp:</h5>
+                      
+                      {(() => {
+                        const versionTag = extractVersionFromFileName(fileName);
+                        return (
+                          <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-purple-300 text-xs flex items-center gap-1.5">
+                                <Check className="w-4 h-4 text-purple-400 shrink-0" />
+                                {versionTag ? (
+                                  <span>Phiên bản hiện tại: <strong className="text-purple-200 text-sm font-mono">{versionTag}</strong></span>
+                                ) : (
+                                  <span>Phiên bản gốc <span className="text-slate-400 font-normal">(Không có hậu tố version)</span></span>
+                                )}
+                              </span>
+                              <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-md">
+                                Active
+                              </span>
+                            </div>
+                            
+                            <p className="text-[11px] text-slate-400 font-medium">
+                              Tên gốc: <span className="font-mono text-slate-300">{fileName}</span>
+                            </p>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* TAB 3: TỆP (Quick Switch Attachment List) */}
+                  {activeTab === 'files' && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <h5 className="font-bold text-slate-300">Danh sách tệp ({currentFilesList.length}):</h5>
+                        <span className="text-[10px] text-slate-400 italic">Click để đổi tệp</span>
+                      </div>
+
+                      <div className="space-y-2">
+                        {currentFilesList.map((fItem, i) => {
+                          const isSelected = fItem.file_name === activeFile.file_name;
+                          const fNameLower = fItem.file_name.toLowerCase();
+
+                          let icon = '📄';
+                          if (fNameLower.endsWith('.html') || fNameLower.endsWith('.css')) icon = '🌐';
+                          else if (fNameLower.endsWith('.json') || fNameLower.endsWith('.js') || fNameLower.endsWith('.py')) icon = '💻';
+                          else if (fNameLower.endsWith('.png') || fNameLower.endsWith('.jpg')) icon = '🖼️';
+
+                          return (
+                            <div
+                              key={i}
+                              onClick={() => setActiveFile(fItem)}
+                              className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2.5 ${
+                                isSelected
+                                  ? 'bg-purple-950/80 border-purple-500/50 text-purple-200 shadow-xs font-bold'
+                                  : 'bg-slate-950/60 border-slate-800 hover:bg-slate-800/80 text-slate-300 font-medium'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <span className="text-base shrink-0">{icon}</span>
+                                <div className="min-w-0">
+                                  <p className={`truncate text-xs ${isSelected ? 'font-bold text-purple-200' : 'font-semibold text-slate-200'}`} title={fItem.file_name}>
+                                    {fItem.file_name}
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 font-medium">
+                                    {formatSize(fItem.file_size)}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {isSelected && (
+                                <span className="px-2 py-0.5 bg-purple-900/80 text-purple-300 text-[10px] font-bold rounded-md shrink-0 border border-purple-700/50">
+                                  Đang xem
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>

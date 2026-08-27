@@ -193,6 +193,8 @@ export default function ProjectDetailContent({
 
   // File preview state
   const [previewFile, setPreviewFile] = useState<PreviewFileItem | null>(null);
+  const [previewFilesList, setPreviewFilesList] = useState<PreviewFileItem[]>([]);
+  const [previewWipContent, setPreviewWipContent] = useState<string>('');
 
   // Modals inside detail content
   const [activeEditWIP, setActiveEditWIP] = useState<AISession | null>(null);
@@ -1808,68 +1810,88 @@ export default function ProjectDetailContent({
                                         </div>
 
                                         {/* Render duy nhất file được chọn */}
-                                        <div
-                                          onClick={() => setPreviewFile({
-                                            file_name: fName,
-                                            storage_path: sPath,
-                                            mime_type: fType,
-                                            source_url: sourceUrl,
-                                            file_size: fSize,
-                                          })}
-                                          className="flex items-center justify-between gap-2 bg-white hover:bg-slate-50 border border-slate-100 rounded-lg p-2 cursor-pointer transition-colors group"
-                                        >
-                                          <div className="flex items-center gap-1.5 min-w-0">
-                                            <span className="text-sm shrink-0">📄</span>
-                                            <span className="font-semibold text-slate-700 group-hover:text-purple-700 truncate text-[11px]" title={fName}>
-                                              {fName}
-                                            </span>
-                                            <span className="text-[9px] text-slate-400 shrink-0 font-medium">
-                                              ({formatWipFileSize(fSize)})
-                                            </span>
-                                          </div>
-                                          
-                                          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                                            <button
-                                              type="button"
-                                              onClick={() => setPreviewFile({
-                                                file_name: fName,
-                                                storage_path: sPath,
-                                                mime_type: fType,
-                                                source_url: sourceUrl
-                                              })}
-                                              className="px-1.5 py-0.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-800 font-bold rounded text-[10px] transition-colors flex items-center gap-0.5 cursor-pointer font-sans"
-                                            >
-                                              👁️ Xem
-                                            </button>
-                                            <a
-                                              href={`${sourceUrl}?download=${fName}`}
-                                              download={fName}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className="px-1.5 py-0.5 bg-white hover:bg-slate-100 border border-slate-200 text-markee-primary hover:text-red-700 font-bold rounded text-[10px] transition-colors flex items-center gap-0.5 cursor-pointer font-sans"
-                                            >
-                                              Tải về
-                                            </a>
-                                            {canManageWIP && (
-                                              <label
-                                                title="Thêm file đính kèm"
-                                                className="px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 font-bold rounded text-[10px] transition-colors flex items-center gap-0.5 cursor-pointer font-sans"
-                                              >
-                                                <Upload className="w-3 h-3 shrink-0" />
-                                                <span>{uploadingLogId === log.id ? 'Đang tải...' : 'Upload'}</span>
-                                                <input
-                                                  type="file"
-                                                  multiple
-                                                  className="hidden"
-                                                  disabled={uploadingLogId === log.id}
-                                                  onChange={(e) => handleQuickUploadFiles(e, log)}
-                                                />
-                                              </label>
-                                            )}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    );
+                                         {(() => {
+                                           const allAttachedFormatted: PreviewFileItem[] = files.map((fItem: any) => {
+                                             const fn = fItem.name || fItem.file_name || 'attachment';
+                                             const fs = fItem.size || fItem.size_bytes || 0;
+                                             const ft = fItem.type || fItem.mime_type || '';
+                                             const sp = fItem.storage_path || '';
+                                             const src = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/chat_attachments/${sp}`;
+                                             return {
+                                               file_name: fn,
+                                               storage_path: sp,
+                                               mime_type: ft,
+                                               source_url: src,
+                                               file_size: fs,
+                                             };
+                                           });
+
+                                           const handleOpenModal = () => {
+                                             setPreviewFile({
+                                               file_name: fName,
+                                               storage_path: sPath,
+                                               mime_type: fType,
+                                               source_url: sourceUrl,
+                                               file_size: fSize,
+                                             });
+                                             setPreviewFilesList(allAttachedFormatted);
+                                             setPreviewWipContent(log.prompt_content || log.title || '');
+                                           };
+
+                                           return (
+                                             <div
+                                               onClick={handleOpenModal}
+                                               className="flex items-center justify-between gap-2 bg-white hover:bg-slate-50 border border-slate-100 rounded-lg p-2 cursor-pointer transition-colors group"
+                                             >
+                                               <div className="flex items-center gap-1.5 min-w-0">
+                                                 <span className="text-sm shrink-0">📄</span>
+                                                 <span className="font-semibold text-slate-700 group-hover:text-purple-700 truncate text-[11px]" title={fName}>
+                                                   {fName}
+                                                 </span>
+                                                 <span className="text-[9px] text-slate-400 shrink-0 font-medium">
+                                                   ({formatWipFileSize(fSize)})
+                                                 </span>
+                                               </div>
+                                               
+                                               <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                                 <button
+                                                   type="button"
+                                                   onClick={handleOpenModal}
+                                                   className="px-1.5 py-0.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-800 font-bold rounded text-[10px] transition-colors flex items-center gap-0.5 cursor-pointer font-sans"
+                                                 >
+                                                   👁️ Xem
+                                                 </button>
+                                                 <a
+                                                   href={`${sourceUrl}?download=${fName}`}
+                                                   download={fName}
+                                                   target="_blank"
+                                                   rel="noopener noreferrer"
+                                                   className="px-1.5 py-0.5 bg-white hover:bg-slate-100 border border-slate-200 text-markee-primary hover:text-red-700 font-bold rounded text-[10px] transition-colors flex items-center gap-0.5 cursor-pointer font-sans"
+                                                 >
+                                                   Tải về
+                                                 </a>
+                                                 {canManageWIP && (
+                                                   <label
+                                                     title="Thêm file đính kèm"
+                                                     className="px-1.5 py-0.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 font-bold rounded text-[10px] transition-colors flex items-center gap-0.5 cursor-pointer font-sans"
+                                                   >
+                                                     <Upload className="w-3 h-3 shrink-0" />
+                                                     <span>{uploadingLogId === log.id ? 'Đang tải...' : 'Upload'}</span>
+                                                     <input
+                                                       type="file"
+                                                       multiple
+                                                       className="hidden"
+                                                       disabled={uploadingLogId === log.id}
+                                                       onChange={(e) => handleQuickUploadFiles(e, log)}
+                                                     />
+                                                   </label>
+                                                 )}
+                                               </div>
+                                             </div>
+                                           );
+                                         })()}
+                                       </div>
+                                     );
                                   })()}
                                 </blockquote>
                               </div>
@@ -2599,8 +2621,14 @@ export default function ProjectDetailContent({
 
       <FilePreviewModal
         isOpen={!!previewFile}
-        onClose={() => setPreviewFile(null)}
+        onClose={() => {
+          setPreviewFile(null);
+          setPreviewFilesList([]);
+          setPreviewWipContent('');
+        }}
         file={previewFile}
+        filesList={previewFilesList}
+        wipContent={previewWipContent}
       />
     </div>
   );
