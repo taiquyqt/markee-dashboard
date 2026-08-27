@@ -18,6 +18,7 @@ import {
   FileCode2,
   Check
 } from 'lucide-react';
+import { MarkdownRenderer } from '@/app/components/AIChat/MarkdownRenderer';
 
 export interface PreviewFileItem {
   file_name: string;
@@ -517,17 +518,17 @@ export default function FilePreviewModal({
                 )}
               </div>
 
-              {/* Vùng Phải (Info Panel) Rộng ~350px với 3 Tabs */}
-              <div className="w-full md:w-80 lg:w-[350px] bg-slate-900 border-t md:border-t-0 md:border-l border-slate-800 flex flex-col shrink-0">
+              {/* Vùng Phải (Info Panel) Rộng ~350px với 3 Tabs (Light Mode) */}
+              <div className="w-full md:w-80 lg:w-[350px] bg-white border-t md:border-t-0 md:border-l border-slate-200 flex flex-col shrink-0">
                 {/* Header Tab Bar */}
-                <div className="flex items-center border-b border-slate-800 bg-slate-950/60 p-1.5 shrink-0">
+                <div className="flex items-center border-b border-slate-200 bg-slate-50 p-1.5 shrink-0">
                   <button
                     type="button"
                     onClick={() => setActiveTab('description')}
                     className={`flex-1 py-2 px-2 text-xs font-bold rounded-lg transition-all cursor-pointer border-0 flex items-center justify-center gap-1.5 ${
                       activeTab === 'description'
                         ? 'bg-purple-600 text-white shadow-xs'
-                        : 'text-slate-400 hover:text-slate-200 bg-transparent'
+                        : 'text-slate-500 hover:text-slate-800 bg-transparent'
                     }`}
                   >
                     <Info className="w-3.5 h-3.5" />
@@ -540,7 +541,7 @@ export default function FilePreviewModal({
                     className={`flex-1 py-2 px-2 text-xs font-bold rounded-lg transition-all cursor-pointer border-0 flex items-center justify-center gap-1.5 ${
                       activeTab === 'versions'
                         ? 'bg-purple-600 text-white shadow-xs'
-                        : 'text-slate-400 hover:text-slate-200 bg-transparent'
+                        : 'text-slate-500 hover:text-slate-800 bg-transparent'
                     }`}
                   >
                     <Layers className="w-3.5 h-3.5" />
@@ -553,7 +554,7 @@ export default function FilePreviewModal({
                     className={`flex-1 py-2 px-2 text-xs font-bold rounded-lg transition-all cursor-pointer border-0 flex items-center justify-center gap-1.5 ${
                       activeTab === 'files'
                         ? 'bg-purple-600 text-white shadow-xs'
-                        : 'text-slate-400 hover:text-slate-200 bg-transparent'
+                        : 'text-slate-500 hover:text-slate-800 bg-transparent'
                     }`}
                   >
                     <FileCode2 className="w-3.5 h-3.5" />
@@ -562,85 +563,87 @@ export default function FilePreviewModal({
                 </div>
 
                 {/* Tab Contents */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs text-slate-200">
-                  {/* TAB 1: MÔ TẢ */}
+                <div className="flex-1 min-h-0 flex flex-col overflow-hidden text-xs text-slate-800 bg-white">
+                  {/* TAB 1: MÔ TẢ (Markdown Typography Nền Sáng) */}
                   {activeTab === 'description' && (
-                    <div className="space-y-4">
-                      {/* Thẻ Thông tin Tệp */}
-                      <div className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 space-y-2.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-400 font-semibold">Tên tệp:</span>
-                          <span className="font-bold text-slate-100 font-mono text-[11px] truncate max-w-[200px]" title={fileName}>
-                            {fileName}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-400 font-semibold">Kích thước:</span>
-                          <span className="font-bold text-purple-300">{formatSize(activeFile.file_size)}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-slate-400 font-semibold">Định dạng:</span>
-                          <span className="font-semibold text-slate-300 bg-slate-800 px-2 py-0.5 rounded text-[10px]">
-                            {mimeType || 'Tệp dữ liệu'}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Nội dung Bài viết / WIP Content */}
-                      <div>
-                        <h5 className="font-bold text-slate-300 mb-2 flex items-center gap-1.5 text-xs">
-                          <span>Nội dung bài viết / Mô tả:</span>
-                        </h5>
-                        <div className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 max-h-80 overflow-y-auto leading-relaxed text-slate-300 text-xs font-medium">
-                          {wipContent || activeFile.description ? (
-                            <p className="whitespace-pre-wrap leading-relaxed">
-                              {wipContent || activeFile.description}
-                            </p>
-                          ) : (
-                            <span className="text-slate-500 italic">Chưa có mô tả chi tiết cho tệp này.</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* TAB 2: PHIÊN BẢN */}
-                  {activeTab === 'versions' && (
-                    <div className="space-y-3">
-                      <h5 className="font-bold text-slate-300 mb-1">Kiểm tra phiên bản tệp:</h5>
-                      
-                      {(() => {
-                        const versionTag = extractVersionFromFileName(fileName);
-                        return (
-                          <div className="p-3.5 bg-slate-950/80 border border-slate-800 rounded-xl space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="font-bold text-purple-300 text-xs flex items-center gap-1.5">
-                                <Check className="w-4 h-4 text-purple-400 shrink-0" />
-                                {versionTag ? (
-                                  <span>Phiên bản hiện tại: <strong className="text-purple-200 text-sm font-mono">{versionTag}</strong></span>
-                                ) : (
-                                  <span>Phiên bản gốc <span className="text-slate-400 font-normal">(Không có hậu tố version)</span></span>
-                                )}
-                              </span>
-                              <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2 py-0.5 rounded-md">
-                                Active
-                              </span>
-                            </div>
-                            
-                            <p className="text-[11px] text-slate-400 font-medium">
-                              Tên gốc: <span className="font-mono text-slate-300">{fileName}</span>
-                            </p>
+                    <div className="flex-1 flex flex-col min-h-0 p-4 overflow-hidden bg-white">
+                      <h5 className="font-bold text-slate-800 mb-2 flex items-center gap-1.5 text-xs shrink-0">
+                        <span>Nội dung bài viết / Mô tả:</span>
+                      </h5>
+                      <div className="flex-1 overflow-y-auto bg-slate-50/70 p-4 md:p-5 rounded-xl border border-slate-200 text-slate-800 text-xs md:text-sm leading-relaxed select-text">
+                        {wipContent || activeFile.description ? (
+                          <div className="prose prose-sm prose-slate max-w-none text-slate-800 select-text">
+                            <MarkdownRenderer content={wipContent || activeFile.description || ''} />
                           </div>
-                        );
-                      })()}
+                        ) : (
+                          <span className="text-slate-400 italic">Chưa có mô tả chi tiết cho tệp này.</span>
+                        )}
+                      </div>
                     </div>
                   )}
 
-                  {/* TAB 3: TỆP (Quick Switch Attachment List) */}
+                  {/* TAB 2: PHIÊN BẢN (Giao diện Light Mode + Thông tin tệp & Regex) */}
+                  {activeTab === 'versions' && (
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
+                      {/* Khối 1: Thông tin tệp */}
+                      <div className="space-y-2">
+                        <h5 className="font-bold text-slate-800 text-xs">Thông tin tệp:</h5>
+                        <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500 font-semibold">Tên tệp:</span>
+                            <span className="font-bold text-slate-900 font-mono text-[11px] truncate max-w-[200px]" title={fileName}>
+                              {fileName}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500 font-semibold">Kích thước:</span>
+                            <span className="font-bold text-purple-700">{formatSize(activeFile.file_size)}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-500 font-semibold">Định dạng:</span>
+                            <span className="font-semibold text-slate-700 bg-white border border-slate-200 px-2 py-0.5 rounded text-[10px]">
+                              {mimeType || 'Tệp dữ liệu'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Khối 2: Kiểm tra phiên bản tệp (Regex) */}
+                      <div className="space-y-2">
+                        <h5 className="font-bold text-slate-800 text-xs">Kiểm tra phiên bản tệp:</h5>
+                        {(() => {
+                          const versionTag = extractVersionFromFileName(fileName);
+                          return (
+                            <div className="p-3.5 bg-purple-50/70 border border-purple-200 rounded-xl space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-purple-900 text-xs flex items-center gap-1.5">
+                                  <Check className="w-4 h-4 text-purple-600 shrink-0" />
+                                  {versionTag ? (
+                                    <span>Phiên bản hiện tại: <strong className="text-purple-700 text-sm font-mono">{versionTag}</strong></span>
+                                  ) : (
+                                    <span>Phiên bản gốc <span className="text-slate-500 font-normal">(Không có hậu tố version)</span></span>
+                                  )}
+                                </span>
+                                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-md">
+                                  Active
+                                </span>
+                              </div>
+                              
+                              <p className="text-[11px] text-slate-500 font-medium">
+                                Tên gốc: <span className="font-mono text-slate-700">{fileName}</span>
+                              </p>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 3: TỆP (Quick Switch Attachment List - Light Mode) */}
                   {activeTab === 'files' && (
-                    <div className="space-y-3">
+                    <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-white">
                       <div className="flex items-center justify-between mb-1">
-                        <h5 className="font-bold text-slate-300">Danh sách tệp ({currentFilesList.length}):</h5>
+                        <h5 className="font-bold text-slate-800">Danh sách tệp ({currentFilesList.length}):</h5>
                         <span className="text-[10px] text-slate-400 italic">Click để đổi tệp</span>
                       </div>
 
@@ -660,14 +663,14 @@ export default function FilePreviewModal({
                               onClick={() => setActiveFile(fItem)}
                               className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2.5 ${
                                 isSelected
-                                  ? 'bg-purple-950/80 border-purple-500/50 text-purple-200 shadow-xs font-bold'
-                                  : 'bg-slate-950/60 border-slate-800 hover:bg-slate-800/80 text-slate-300 font-medium'
+                                  ? 'bg-purple-50 border-purple-300 text-purple-900 shadow-3xs font-bold'
+                                  : 'bg-slate-50/80 border-slate-200 hover:bg-slate-100 text-slate-700 font-medium'
                               }`}
                             >
                               <div className="flex items-center gap-2.5 min-w-0">
                                 <span className="text-base shrink-0">{icon}</span>
                                 <div className="min-w-0">
-                                  <p className={`truncate text-xs ${isSelected ? 'font-bold text-purple-200' : 'font-semibold text-slate-200'}`} title={fItem.file_name}>
+                                  <p className={`truncate text-xs ${isSelected ? 'font-bold text-purple-900' : 'font-semibold text-slate-800'}`} title={fItem.file_name}>
                                     {fItem.file_name}
                                   </p>
                                   <p className="text-[10px] text-slate-400 font-medium">
@@ -677,7 +680,7 @@ export default function FilePreviewModal({
                               </div>
 
                               {isSelected && (
-                                <span className="px-2 py-0.5 bg-purple-900/80 text-purple-300 text-[10px] font-bold rounded-md shrink-0 border border-purple-700/50">
+                                <span className="px-2 py-0.5 bg-purple-200 text-purple-800 text-[10px] font-bold rounded-md shrink-0 border border-purple-300">
                                   Đang xem
                                 </span>
                               )}
