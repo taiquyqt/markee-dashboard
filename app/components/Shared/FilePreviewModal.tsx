@@ -40,7 +40,7 @@ interface FilePreviewModalProps {
   wipContent?: string;
   filesList?: PreviewFileItem[];
   onSelectForChat?: (file: PreviewFileItem) => void;
-  onSaveContent?: (newContent: string, file: PreviewFileItem) => void;
+  onSaveContent?: (newContent: string, file: PreviewFileItem) => Promise<void> | void;
 }
 
 // Regex trích xuất phiên bản từ tên tệp (VD: -v1, _v2, -v3.5, v2, _v1.0)
@@ -71,6 +71,7 @@ export default function FilePreviewModal({
   // State hỗ trợ Edit Inline cho Tab [Mô tả]
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editedText, setEditedText] = useState<string>('');
+  const [isSaving, setIsSaving] = useState<boolean>(false);
 
   const [textContent, setTextContent] = useState<string>('');
   const [loadingText, setLoadingText] = useState<boolean>(false);
@@ -83,15 +84,35 @@ export default function FilePreviewModal({
       setViewMode('fullscreen');
       setActiveTab('description');
       setIsEditing(false);
+      setIsSaving(false);
       setEditedText(wipContent || file.description || '');
     } else {
       setActiveFile(null);
       setTextContent('');
       setFetchError(null);
       setIsEditing(false);
+      setIsSaving(false);
       setEditedText('');
     }
   }, [isOpen, file, wipContent]);
+
+  // Xử lý lưu nội dung Inline gọi tới API từ component cha
+  const handleSaveInline = async () => {
+    if (!onSaveContent || !activeFile) {
+      setIsEditing(false);
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await onSaveContent(editedText, activeFile);
+      setIsEditing(false);
+    } catch (err: any) {
+      console.error('Error saving inline content:', err);
+      alert(err.message || 'Lỗi khi lưu nội dung. Vui lòng thử lại!');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   // Thông báo tới Sidebar chính về trạng thái Full-screen của Preview Modal
   useEffect(() => {
@@ -560,26 +581,32 @@ export default function FilePreviewModal({
                           <div className="flex items-center gap-1.5">
                             <button
                               type="button"
+                              disabled={isSaving}
                               onClick={() => {
                                 setIsEditing(false);
                                 setEditedText(wipContent || activeFile.description || '');
                               }}
-                              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-md text-[11px] transition-colors border border-slate-200 cursor-pointer"
+                              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-md text-[11px] transition-colors border border-slate-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               Hủy
                             </button>
                             <button
                               type="button"
-                              onClick={() => {
-                                if (onSaveContent && activeFile) {
-                                  onSaveContent(editedText, activeFile);
-                                }
-                                setIsEditing(false);
-                              }}
-                              className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-md text-[11px] transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                              disabled={isSaving}
+                              onClick={handleSaveInline}
+                              className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-md text-[11px] transition-colors flex items-center gap-1 cursor-pointer shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              <Save className="w-3 h-3" />
-                              <span>Lưu</span>
+                              {isSaving ? (
+                                <>
+                                  <Loader className="w-3 h-3 animate-spin" />
+                                  <span>Đang lưu...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Save className="w-3 h-3" />
+                                  <span>Lưu</span>
+                                </>
+                              )}
                             </button>
                           </div>
                         ) : (
@@ -600,10 +627,11 @@ export default function FilePreviewModal({
                       {isEditing ? (
                         <div className="flex-1 flex flex-col min-h-0">
                           <textarea
+                            disabled={isSaving}
                             value={editedText}
                             onChange={(e) => setEditedText(e.target.value)}
                             placeholder="Nhập nội dung mô tả (hỗ trợ định dạng Markdown)..."
-                            className="flex-1 w-full h-full p-4 font-mono text-xs md:text-sm bg-slate-50 text-slate-800 border border-purple-300 rounded-xl outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-500 resize-none leading-relaxed transition-all shadow-inner"
+                            className="flex-1 w-full h-full p-4 font-mono text-xs md:text-sm bg-slate-50 text-slate-800 border border-purple-300 rounded-xl outline-none focus:ring-2 focus:ring-purple-400/30 focus:border-purple-500 resize-none leading-relaxed transition-all shadow-inner disabled:opacity-60"
                           />
                         </div>
                       ) : (

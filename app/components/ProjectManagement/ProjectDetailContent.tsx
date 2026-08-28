@@ -195,6 +195,7 @@ export default function ProjectDetailContent({
   const [previewFile, setPreviewFile] = useState<PreviewFileItem | null>(null);
   const [previewFilesList, setPreviewFilesList] = useState<PreviewFileItem[]>([]);
   const [previewWipContent, setPreviewWipContent] = useState<string>('');
+  const [activePreviewWip, setActivePreviewWip] = useState<AISession | null>(null);
 
   // Modals inside detail content
   const [activeEditWIP, setActiveEditWIP] = useState<AISession | null>(null);
@@ -1836,6 +1837,7 @@ export default function ProjectDetailContent({
                                              });
                                              setPreviewFilesList(allAttachedFormatted);
                                              setPreviewWipContent(log.prompt_content || log.title || '');
+                                             setActivePreviewWip(log);
                                            };
 
                                            return (
@@ -2619,17 +2621,66 @@ export default function ProjectDetailContent({
         </div>
       )}
 
-      <FilePreviewModal
-        isOpen={!!previewFile}
-        onClose={() => {
-          setPreviewFile(null);
-          setPreviewFilesList([]);
-          setPreviewWipContent('');
-        }}
-        file={previewFile}
-        filesList={previewFilesList}
-        wipContent={previewWipContent}
-      />
+      {/* Modal Preview File */}
+      {(() => {
+        const handleSaveInlineWipContent = async (newContent: string) => {
+          if (!activePreviewWip) {
+            throw new Error('Không tìm thấy bản nháp WIP tương ứng.');
+          }
+
+          const { data: { session } } = await supabase.auth.getSession();
+          const token = session?.access_token;
+
+          const res = await fetch('/api/wip', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              id: activePreviewWip.id,
+              title: activePreviewWip.title,
+              markdown_content: newContent,
+              feature_name: activePreviewWip.feature_name,
+              attached_file: activePreviewWip.attached_file,
+              removed_files: []
+            })
+          });
+
+          if (!res.ok) {
+            const errData = await res.json();
+            throw new Error(errData.error || 'Lỗi khi cập nhật nội dung bản nháp');
+          }
+
+          // Cập nhật mảng logs hiển thị ở giao diện
+          setLogs(prev => prev.map(l => l.id === activePreviewWip.id ? {
+            ...l,
+            prompt_content: newContent
+          } : l));
+
+          // Cập nhật lại state preview
+          setActivePreviewWip(prev => prev ? { ...prev, prompt_content: newContent } : null);
+          setPreviewWipContent(newContent);
+
+          showToast('Cập nhật nội dung bản nháp thành công!', 'success');
+        };
+
+        return (
+          <FilePreviewModal
+            isOpen={!!previewFile}
+            onClose={() => {
+              setPreviewFile(null);
+              setPreviewFilesList([]);
+              setPreviewWipContent('');
+              setActivePreviewWip(null);
+            }}
+            file={previewFile}
+            filesList={previewFilesList}
+            wipContent={previewWipContent}
+            onSaveContent={handleSaveInlineWipContent}
+          />
+        );
+      })()}
     </div>
   );
 }
