@@ -2058,25 +2058,25 @@ export default function ProjectDetailContent({
                       const fSize = file.size || file.size_bytes || 0;
                       
                       return (
-                         <div key={idx} className="flex items-center justify-between p-2 bg-slate-50 border border-slate-100 rounded-lg text-xs">
-                           <div className="flex items-center gap-2 min-w-0">
-                             <span className="shrink-0 text-sm">📄</span>
-                             <span className="font-semibold text-slate-700 truncate text-[11px] max-w-50" title={fName}>
-                               {fName}
-                             </span>
-                             <span className="text-[9px] text-slate-400 shrink-0 font-medium">
-                               ({formatWipFileSize(fSize)})
-                             </span>
-                           </div>
-                           <button
-                             type="button"
-                             onClick={() => handleRemoveWipFile(idx)}
-                             className="text-red-500 hover:text-red-700 transition-colors p-1 border-0 bg-transparent cursor-pointer font-bold shrink-0 text-xs"
-                             title="Gỡ bỏ"
-                           >
-                             ✕
-                           </button>
-                         </div>
+                        <div key={idx} className="flex items-center justify-between gap-2.5 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <span className="shrink-0 text-sm">📄</span>
+                            <span className="font-semibold text-slate-700 truncate text-[11px] flex-1 min-w-0" title={fName}>
+                              {fName}
+                            </span>
+                            <span className="text-[9px] text-slate-400 shrink-0 font-medium font-sans">
+                              ({formatWipFileSize(fSize)})
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveWipFile(idx)}
+                            className="text-red-500 hover:text-red-700 transition-colors p-1 border-0 bg-transparent cursor-pointer font-bold shrink-0 text-xs"
+                            title="Gỡ bỏ"
+                          >
+                            ✕
+                          </button>
+                        </div>
                       );
                     })}
                   </div>
